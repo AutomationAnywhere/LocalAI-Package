@@ -42,10 +42,24 @@ public class LlamaServerManager {
     // ready within 120s" even though the process started successfully. Pinning both sides
     // to the same explicit value removes that ambiguity entirely.
     //
-    // Override via -Dlocalai.server.host=<ip> for environments where 127.0.0.1 does not
-    // route between the bot process and its own child llama-server process.
-    private static final String SERVER_HOST =
-        System.getProperty("localai.server.host", "127.0.0.1");
+    // Default "127.0.0.1" needs zero configuration and works for the overwhelming majority
+    // of installs. For the rare environment where loopback genuinely does not route between
+    // the bot process and its own child llama-server process, override with:
+    //   - LOCALAI_SERVER_HOST environment variable (preferred — set once via Windows
+    //     System Properties > Environment Variables, no Bot Agent config file editing,
+    //     no JVM flag syntax to get wrong), or
+    //   - -Dlocalai.server.host=<ip> JVM system property, if env var isn't practical
+    // Env var takes priority when both are set (it's the friendlier path for a non-engineer
+    // to set correctly), falling back to the system property, falling back to 127.0.0.1.
+    private static final String SERVER_HOST = resolveServerHost();
+
+    private static String resolveServerHost() {
+        String fromEnv = System.getenv("LOCALAI_SERVER_HOST");
+        if (fromEnv != null && !fromEnv.trim().isEmpty()) {
+            return fromEnv.trim();
+        }
+        return System.getProperty("localai.server.host", "127.0.0.1");
+    }
 
     private static volatile LlamaServerManager instance;
 
@@ -212,7 +226,8 @@ public class LlamaServerManager {
             + "Last connection error: " + (lastConnectFailure != null ? lastConnectFailure.toString() : "none — got non-200 responses only") + ". "
             + "If this environment's network setup means " + SERVER_HOST + " does not route to the bot's own "
             + "child processes (e.g. some VM/VDI network virtualization or VPN split-tunnel software), "
-            + "override with -Dlocalai.server.host=<working address>. "
+            + "set the LOCALAI_SERVER_HOST environment variable to a working address and restart the "
+            + "Bot Agent (or set -Dlocalai.server.host=<ip> as a JVM argument if you cannot set env vars). "
             + "Last server log lines:\n" + tail);
     }
 
