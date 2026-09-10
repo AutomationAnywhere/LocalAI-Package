@@ -32,6 +32,21 @@ public class LlamaServerManager {
     private static final Logger logger = LogManager.getLogger(LlamaServerManager.class);
     private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
 
+    // The interface llama-server binds to AND the interface our HTTP client connects to.
+    // Previously neither side was pinned: llama-server used its own internal default bind
+    // address, and the client separately hardcoded "127.0.0.1" — relying on those two
+    // independently-chosen values happening to agree. In VM/VDI environments with network
+    // virtualization, VPN split-tunnel drivers, or endpoint security that intercepts
+    // loopback traffic, they can diverge: the server comes up fine on a real, working
+    // address that isn't the one the client polls, producing "llama-server did not become
+    // ready within 120s" even though the process started successfully. Pinning both sides
+    // to the same explicit value removes that ambiguity entirely.
+    //
+    // Override via -Dlocalai.server.host=<ip> for environments where 127.0.0.1 does not
+    // route between the bot process and its own child llama-server process.
+    private static final String SERVER_HOST =
+        System.getProperty("localai.server.host", "127.0.0.1");
+
     private static volatile LlamaServerManager instance;
 
     // Volatile: writes happen inside synchronized methods; reads in complete()
@@ -116,6 +131,7 @@ public class LlamaServerManager {
         List<String> cmd = new ArrayList<>(Arrays.asList(
             serverBin.toString(),
             "-m",        absModelPath,
+            "--host",    SERVER_HOST, // pin bind address — see SERVER_HOST comment above
             "--port",    String.valueOf(port),
             "-ngl",      "0",
             "-c",        String.valueOf(ctx),
@@ -125,7 +141,8 @@ public class LlamaServerManager {
 
         if (isWindows) cmd.add("--no-mmap");
 
-        logger.info("Starting llama-server: model={}, port={}, ctx={}", modelType.getId(), port, ctx);
+        logger.info("Starting llama-server: model={}, host={}, port={}, ctx={}",
+            modelType.getId(), SERVER_HOST, port, ctx);
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(serverBin.getParent().toFile()); // cwd=binDir for DLL resolution on Windows
@@ -143,11 +160,16 @@ public class LlamaServerManager {
     }
 
     private void waitForReady(long timeoutMs) throws Exception {
-        String healthUrl = "http://127.0.0.1:" + port + "/health";
+        String healthUrl = "http://" + SERVER_HOST + ":" + port + "/health";
         long deadline = System.currentTimeMillis() + timeoutMs;
 
-        logger.info("Waiting for llama-server on port {} (up to {}s)...", port, timeoutMs / 1000);
+        logger.info("Waiting for llama-server on {}:{} (up to {}s)...", SERVER_HOST, port, timeoutMs / 1000);
 
+        // Track the last connection failure so a full timeout can report *why* the
+        // health check never succeeded (e.g. connection refused vs. reset vs. timed
+        // out) instead of just "did not become ready" — this was previously
+        // indistinguishable from a genuine slow model load.
+        IOException lastConnectFailure = null;
         while (System.currentTimeMillis() < deadline) {
             // Snapshot the volatile field once per iteration to avoid a race
             // between two reads of the same field within one loop body.
@@ -168,20 +190,30 @@ public class LlamaServerManager {
                     .build();
                 try (Response resp = httpClient.newCall(req).execute()) {
                     if (resp.code() == 200) {
-                        logger.info("llama-server ready on port {}", port);
+                        logger.info("llama-server ready on {}:{}", SERVER_HOST, port);
                         return;
                     }
                 }
-            } catch (IOException ignored) {
-                // Not accepting connections yet — keep polling
+            } catch (IOException e) {
+                // Not accepting connections yet — keep polling, but remember why
+                // in case we never succeed and need to report it below.
+                lastConnectFailure = e;
             }
 
             Thread.sleep(500);
         }
 
+        Path log = ModelManager.getModelCacheDir().resolve("llama-server.log");
+        String tail = readLogTail(log, 20);
         stopInternal();
         throw new RuntimeException(
-            "llama-server did not become ready within " + (timeoutMs / 1000) + "s");
+            "llama-server did not become ready within " + (timeoutMs / 1000) + "s "
+            + "(process was alive, health check against " + healthUrl + " never returned 200). "
+            + "Last connection error: " + (lastConnectFailure != null ? lastConnectFailure.toString() : "none — got non-200 responses only") + ". "
+            + "If this environment's network setup means " + SERVER_HOST + " does not route to the bot's own "
+            + "child processes (e.g. some VM/VDI network virtualization or VPN split-tunnel software), "
+            + "override with -Dlocalai.server.host=<working address>. "
+            + "Last server log lines:\n" + tail);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -255,7 +287,7 @@ public class LlamaServerManager {
 
         RequestBody reqBody = RequestBody.create(gson.toJson(body), JSON_TYPE);
         Request request = new Request.Builder()
-            .url("http://127.0.0.1:" + localPort + "/completion")
+            .url("http://" + SERVER_HOST + ":" + localPort + "/completion")
             .header("Authorization", "Bearer " + localApiKey)
             .post(reqBody)
             .build();
