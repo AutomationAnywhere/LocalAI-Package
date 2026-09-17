@@ -79,6 +79,10 @@ public class SanitizeJSON {
         @NotEmpty
         String outputStyle,
 
+        // Note: gemma3-270m is intentionally NOT offered here. In live testing,
+        // given JSON with an unescaped nested quote, it returned validly-formed
+        // JSON but silently truncated the string value instead of repairing it —
+        // data loss disguised as success. Reliable for Prompt only.
         @Idx(index = "3", type = AttributeType.SELECT, options = {
             @Idx.Option(index = "3.1", pkg = @Pkg(label = "Qwen3 4B (Q4, ~2.5GB, 32K ctx) — best for structured output", value = "qwen3-4b")),
             @Idx.Option(index = "3.2", pkg = @Pkg(label = "Llama 3.2 3B (Q4, ~2.0GB, 8K ctx) — fast, proven baseline", value = "llama3.2-3b")),

@@ -117,6 +117,12 @@ public class TransformToJSON {
         @NotEmpty
         String outputType,
 
+        // Note: gemma3-270m is intentionally NOT offered here. In live testing it
+        // returned syntactically valid JSON with fabricated content instead of
+        // extracted content — e.g. given a 2-row CSV it invented wrong ages and
+        // dropped a column entirely; given key-value input it dropped real fields
+        // and added one that was never in the input. Worse than an obvious
+        // failure, since the output looks plausible. Reliable for Prompt only.
         @Idx(index = "5", type = AttributeType.SELECT, options = {
             @Idx.Option(index = "5.1", pkg = @Pkg(label = "Qwen3 4B (Q4, ~2.5GB, 32K ctx) — best for structured output", value = "qwen3-4b")),
             @Idx.Option(index = "5.2", pkg = @Pkg(label = "Llama 3.2 3B (Q4, ~2.0GB, 8K ctx) — fast, proven baseline", value = "llama3.2-3b")),
