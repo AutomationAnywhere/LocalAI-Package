@@ -86,6 +86,11 @@ public class ClassifyText {
         @NotEmpty
         String categories,
 
+        // Note: gemma3-270m is intentionally NOT offered here. Tested against 4
+        // categories (invoice/receipt/contract/report) across repeated trials, it
+        // defaulted to "Receipt" as a catch-all answer — 0/5 correct on contract
+        // and report, 2/5 on invoice. Reliable for Prompt (see Prompt.java) but
+        // not for multi-category classification at this parameter count.
         @Idx(index = "3", type = AttributeType.SELECT, options = {
             @Idx.Option(index = "3.1", pkg = @Pkg(label = "Qwen3 4B (Q4, ~2.5GB, 32K ctx) — best for structured output", value = "qwen3-4b")),
             @Idx.Option(index = "3.2", pkg = @Pkg(label = "Llama 3.2 3B (Q4, ~2.0GB, 8K ctx) — fast, proven baseline", value = "llama3.2-3b")),

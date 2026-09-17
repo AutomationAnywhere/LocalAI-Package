@@ -25,8 +25,9 @@ Run AI inference **entirely on-device** with no cloud APIs, no GPU, and no inter
 | `phi4-mini` | 3.8B | ~2.5GB | 128K | Instructions & long-context reasoning |
 | `gemma4-e2b` | 5.1B | ~3.1GB | 128K | Highest quality output |
 | `llama3.2-3b` | 3B | ~2.0GB | 8K | Fast, proven baseline |
-| `deepseek-r1-1.5b` | 1.5B | ~1.1GB | 128K | Chain-of-thought reasoning, fastest |
+| `deepseek-r1-1.5b` | 1.5B | ~1.1GB | 128K | Chain-of-thought reasoning |
 | `qwen2.5-coder-3b` | 3B | ~1.9GB | 32K | Code generation & scripting |
+| `gemma3-270m` | 270M | ~253MB | 32K | Smallest & fastest; verified reliable only for the Prompt action's general Q&A. Not offered in Classify Text (defaults to one category regardless of input) or Redact PII (returns input unmodified) — see model dropdowns for details |
 
 Models are automatically downloaded from HuggingFace on first use and cached at:
 - **Windows:** `%LOCALAPPDATA%\AutomationAnywhere\LocalAI\`

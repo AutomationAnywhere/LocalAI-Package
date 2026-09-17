@@ -87,7 +87,15 @@ public class ModelManager {
         DEEPSEEK_R1_1_5B(
             "deepseek-r1-1.5b", "deepseek-r1-1.5b-q4", "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
             "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
-            1147, 131072, 4096, PromptTemplate.CHATML);
+            1147, 131072, 4096, PromptTemplate.CHATML),
+
+        // Gemma 3 270M IT - Q4_K_M (~253MB, 32K context). Ultra-small, built for
+        // narrow single-purpose tasks (classification, short extraction), not
+        // general-purpose chat. Uses the same GEMMA3 chat template as gemma3-4b.
+        GEMMA3_270M(
+            "gemma3-270m", "gemma3-270m-q4", "google_gemma-3-270m-it-Q4_K_M.gguf",
+            "https://huggingface.co/bartowski/google_gemma-3-270m-it-GGUF/resolve/main/google_gemma-3-270m-it-Q4_K_M.gguf",
+            253, 32768, 4096, PromptTemplate.GEMMA3);
 
         public enum PromptTemplate {
             RAW, CHATML, CHATML_QWEN3, GEMMA3, GEMMA4, PHI4

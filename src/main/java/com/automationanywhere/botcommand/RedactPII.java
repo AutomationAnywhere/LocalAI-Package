@@ -101,6 +101,11 @@ public class RedactPII {
         @Pkg(label = "Replacement Token", description = "Text to replace PII with (e.g., [REDACTED], ***, <PII>)", default_value = "[REDACTED]", default_value_type = DataType.STRING)
         String replacementToken,
 
+        // Note: gemma3-270m is intentionally NOT offered here. In live testing it
+        // returned PII-redaction input completely unmodified (no entities redacted
+        // at all) — a real instruction-following failure, not a formatting quirk.
+        // It performs well on Prompt and ClassifyText; redaction is a different,
+        // harder instruction-following task that a 270M model doesn't handle.
         @Idx(index = "4", type = AttributeType.SELECT, options = {
             @Idx.Option(index = "4.1", pkg = @Pkg(label = "Qwen3 4B (Q4, ~2.5GB, 32K ctx) — best for structured output", value = "qwen3-4b")),
             @Idx.Option(index = "4.2", pkg = @Pkg(label = "Llama 3.2 3B (Q4, ~2.0GB, 8K ctx) — fast, proven baseline", value = "llama3.2-3b")),
