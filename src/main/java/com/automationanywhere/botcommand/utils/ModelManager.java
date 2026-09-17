@@ -95,7 +95,16 @@ public class ModelManager {
         GEMMA3_270M(
             "gemma3-270m", "gemma3-270m-q4", "google_gemma-3-270m-it-Q4_K_M.gguf",
             "https://huggingface.co/bartowski/google_gemma-3-270m-it-GGUF/resolve/main/google_gemma-3-270m-it-Q4_K_M.gguf",
-            253, 32768, 4096, PromptTemplate.GEMMA3);
+            253, 32768, 4096, PromptTemplate.GEMMA3),
+
+        // Gemma 3 1B IT - Q4_K_M (~769MB, 32K context). Verified reliable across
+        // Prompt, ClassifyText, RedactPII, TransformToJSON, SanitizeJSON, and
+        // SummarizeText (see TestGemma3_1BInference*). Excluded from ExtractData
+        // and NormalizeAndStandardize — see their model dropdowns for why.
+        GEMMA3_1B(
+            "gemma3-1b", "gemma3-1b-q4", "google_gemma-3-1b-it-Q4_K_M.gguf",
+            "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF/resolve/main/google_gemma-3-1b-it-Q4_K_M.gguf",
+            769, 32768, 4096, PromptTemplate.GEMMA3);
 
         public enum PromptTemplate {
             RAW, CHATML, CHATML_QWEN3, GEMMA3, GEMMA4, PHI4

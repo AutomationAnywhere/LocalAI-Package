@@ -156,10 +156,10 @@ public class TestNewModels {
 
     @Test
     public void testAllModelTypesCount() {
-        System.out.println("\n[TEST] Total model count is 8");
-        assertEquals(ModelManager.ModelType.values().length, 8,
-            "Should have 8 model types (7 original + Gemma 3 270M)");
-        System.out.println("  OK: 8 models total");
+        System.out.println("\n[TEST] Total model count is 9");
+        assertEquals(ModelManager.ModelType.values().length, 9,
+            "Should have 9 model types (7 original + Gemma 3 270M + Gemma 3 1B)");
+        System.out.println("  OK: 9 models total");
     }
 
     // ===== Thinking Block Stripping Tests =====

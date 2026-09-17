@@ -341,12 +341,27 @@ public class LlamaServerManager {
                 estimatedPromptTokens, maxTokens, budget, localCtx, localModelId));
         }
 
+        // cache_prompt was previously always true. Every call here is a fresh,
+        // independent request (each bot action builds a complete standalone
+        // prompt — none of them incrementally grow a running conversation), so
+        // there was never a real prefix-reuse benefit to it. Worse: confirmed
+        // via live testing that it actively corrupts output on some models —
+        // gemma3-1b, asked to classify one text as "contract" right after an
+        // unrelated prior request (a plain Q&A prompt, sharing no prefix) on
+        // the same server, answered "receipt" — the same wrong category as its
+        // immediately preceding call — with cache_prompt true, and answered
+        // correctly with it false. The failure did not reproduce on Qwen3-4B
+        // in the same scenario, but disabling it costs little (prompt
+        // reprocessing for these short prompts is well under a second even on
+        // the largest models here) against a real, silent correctness risk on
+        // smaller models whenever a bot chains different actions against the
+        // same loaded model.
         JsonObject body = new JsonObject();
         body.addProperty("prompt",       prompt);
         body.addProperty("n_predict",    maxTokens);
         body.addProperty("temperature",  temperature);
         body.addProperty("stream",       false);
-        body.addProperty("cache_prompt", true);
+        body.addProperty("cache_prompt", false);
 
         if (stopSequences != null && stopSequences.length > 0) {
             JsonArray stops = new JsonArray();

@@ -108,7 +108,8 @@ public class Prompt {
             @Idx.Option(index = "2.5", pkg = @Pkg(label = "Gemma 4 E2B (Q4, ~3.1GB, 128K ctx) — highest quality", value = "gemma4-e2b")),
             @Idx.Option(index = "2.6", pkg = @Pkg(label = "DeepSeek R1 1.5B (Q4, ~1.1GB, 128K ctx) — fastest, chain-of-thought", value = "deepseek-r1-1.5b")),
             @Idx.Option(index = "2.7", pkg = @Pkg(label = "Qwen2.5-Coder 3B (Q4, ~1.9GB, 32K ctx) — code & scripting specialist", value = "qwen2.5-coder-3b")),
-            @Idx.Option(index = "2.8", pkg = @Pkg(label = "Gemma 3 270M (Q4, ~253MB, 32K ctx) — smallest & fastest, narrow tasks only", value = "gemma3-270m"))
+            @Idx.Option(index = "2.8", pkg = @Pkg(label = "Gemma 3 270M (Q4, ~253MB, 32K ctx) — smallest & fastest, narrow tasks only", value = "gemma3-270m")),
+            @Idx.Option(index = "2.9", pkg = @Pkg(label = "Gemma 3 1B (Q4, ~769MB, 32K ctx) — small & fast, reliable across tasks", value = "gemma3-1b"))
         })
         @Pkg(label = "Model", description = "Small Language Model to use for generation (curated top models under 3GB).", default_value = "qwen3-4b", default_value_type = DataType.STRING)
         @NotEmpty

@@ -113,7 +113,8 @@ public class RedactPII {
             @Idx.Option(index = "4.4", pkg = @Pkg(label = "Gemma 3 4B (Q4, ~2.5GB, 128K ctx) — balanced all-rounder", value = "gemma3-4b")),
             @Idx.Option(index = "4.5", pkg = @Pkg(label = "Gemma 4 E2B (Q4, ~3.1GB, 128K ctx) — highest quality", value = "gemma4-e2b")),
             @Idx.Option(index = "4.6", pkg = @Pkg(label = "DeepSeek R1 1.5B (Q4, ~1.1GB, 128K ctx) — fastest, chain-of-thought", value = "deepseek-r1-1.5b")),
-            @Idx.Option(index = "4.7", pkg = @Pkg(label = "Qwen2.5-Coder 3B (Q4, ~1.9GB, 32K ctx) — code & scripting specialist", value = "qwen2.5-coder-3b"))
+            @Idx.Option(index = "4.7", pkg = @Pkg(label = "Qwen2.5-Coder 3B (Q4, ~1.9GB, 32K ctx) — code & scripting specialist", value = "qwen2.5-coder-3b")),
+            @Idx.Option(index = "4.8", pkg = @Pkg(label = "Gemma 3 1B (Q4, ~769MB, 32K ctx) — small & fast, reliable across tasks", value = "gemma3-1b"))
         })
         @Pkg(label = "Model", description = "Small Language Model to use for redaction. Qwen2.5 3B recommended.", default_value = "qwen3-4b", default_value_type = DataType.STRING)
         @NotEmpty

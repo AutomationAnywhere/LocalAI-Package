@@ -111,6 +111,17 @@ public class NormalizeAndStandardize {
         @Pkg(label = "Output Format", description = "Target format (e.g., 'YYYY-MM-DD', 'E.164', 'digits only', or describe custom format)")
         String outputFormat,
 
+        // Note: gemma3-1b is intentionally NOT offered here (gemma3-270m isn't
+        // either). In live testing, date normalization worked correctly, but
+        // phone normalization did not reliably comply with the requested
+        // format — asked for E.164, it returned digits-only with no "+1"
+        // country code, and in raw-prompt trials sometimes just echoed the
+        // input unchanged. Since this action's single Model selection applies
+        // across all data types (phone/date/address/name/email/custom) and
+        // only date was verified, the whole action is excluded rather than
+        // offering a model that's reliable for some sub-types and not others.
+        // Reliable elsewhere (Prompt, ClassifyText, RedactPII, TransformToJSON,
+        // SanitizeJSON, SummarizeText).
         @Idx(index = "4", type = AttributeType.SELECT, options = {
             @Idx.Option(index = "4.1", pkg = @Pkg(label = "Qwen3 4B (Q4, ~2.5GB, 32K ctx) — best for structured output", value = "qwen3-4b")),
             @Idx.Option(index = "4.2", pkg = @Pkg(label = "Llama 3.2 3B (Q4, ~2.0GB, 8K ctx) — fast, proven baseline", value = "llama3.2-3b")),

@@ -94,6 +94,16 @@ public class ExtractData {
         @NotEmpty
         String fieldsToExtract,
 
+        // Note: gemma3-1b is intentionally NOT offered here (gemma3-270m isn't
+        // either). In live testing, gemma3-1b actually extracted the correct
+        // values but echoed the literal word "FIELDNAME" from this shared
+        // prompt's instructions instead of substituting the real field name
+        // (e.g. "FIELDNAME: invoice_number: 12345" instead of
+        // "invoice_number: 12345"), which breaks parseExtractionResponse's key
+        // matching and makes every field come back NOT_FOUND. Reliable
+        // elsewhere (Prompt, ClassifyText, RedactPII, TransformToJSON,
+        // SanitizeJSON, SummarizeText) — this is specific to this prompt's
+        // literal-placeholder phrasing, which larger models handle fine.
         @Idx(index = "3", type = AttributeType.SELECT, options = {
             @Idx.Option(index = "3.1", pkg = @Pkg(label = "Qwen3 4B (Q4, ~2.5GB, 32K ctx) — best for structured output", value = "qwen3-4b")),
             @Idx.Option(index = "3.2", pkg = @Pkg(label = "Llama 3.2 3B (Q4, ~2.0GB, 8K ctx) — fast, proven baseline", value = "llama3.2-3b")),

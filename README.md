@@ -28,6 +28,7 @@ Run AI inference **entirely on-device** with no cloud APIs, no GPU, and no inter
 | `deepseek-r1-1.5b` | 1.5B | ~1.1GB | 128K | Chain-of-thought reasoning |
 | `qwen2.5-coder-3b` | 3B | ~1.9GB | 32K | Code generation & scripting |
 | `gemma3-270m` | 270M | ~253MB | 32K | Smallest & fastest; verified reliable only for the Prompt action's general Q&A. Not offered in Classify Text, Redact PII, Transform to JSON, or Sanitize JSON — tested and found to fabricate or drop data (see model dropdowns for details) |
+| `gemma3-1b` | 1B | ~769MB | 32K | Small & fast (~2.8x faster generation than qwen3-4b); verified reliable for Prompt, Classify Text, Redact PII, Transform to JSON, Sanitize JSON, and Summarize Text. Not offered in Extract Data or Normalize & Standardize — tested and found unreliable for those specific tasks (see model dropdowns for details) |
 
 Models are automatically downloaded from HuggingFace on first use and cached at:
 - **Windows:** `%LOCALAPPDATA%\AutomationAnywhere\LocalAI\`
