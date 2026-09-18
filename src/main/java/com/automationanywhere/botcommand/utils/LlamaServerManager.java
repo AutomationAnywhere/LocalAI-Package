@@ -61,6 +61,40 @@ public class LlamaServerManager {
         return System.getProperty("localai.server.host", "127.0.0.1");
     }
 
+    // By default llama-server binds a fresh OS-assigned ephemeral port every run
+    // (ServerSocket(0) — see findFreePort()). That's the right default: zero
+    // configuration, no port ever collides. But some locked-down VM/VDI images
+    // only allow firewall/network policy rules for a specific, known port (a
+    // different random port every run can't be allowlisted at all) — even on
+    // loopback, some enterprise endpoint security filters by port regardless of
+    // address. For that case, LOCALAI_SERVER_PORT (or -Dlocalai.server.port) pins
+    // a fixed port instead of picking a random one. Same env-var-first, then
+    // system-property, then "use dynamic" precedence as SERVER_HOST above.
+    private static final Integer FIXED_SERVER_PORT = resolveServerPort();
+
+    private static Integer resolveServerPort() {
+        String raw = System.getenv("LOCALAI_SERVER_PORT");
+        if (raw == null || raw.trim().isEmpty()) {
+            raw = System.getProperty("localai.server.port");
+        }
+        if (raw == null || raw.trim().isEmpty()) {
+            return null; // no override — use a dynamic ephemeral port
+        }
+        try {
+            int p = Integer.parseInt(raw.trim());
+            if (p < 1 || p > 65535) {
+                logger.warn("LOCALAI_SERVER_PORT/localai.server.port value '{}' is out of range " +
+                    "(1-65535) — falling back to a dynamic port", raw);
+                return null;
+            }
+            return p;
+        } catch (NumberFormatException e) {
+            logger.warn("LOCALAI_SERVER_PORT/localai.server.port value '{}' is not a valid integer " +
+                "— falling back to a dynamic port", raw);
+            return null;
+        }
+    }
+
     // Number of CPU threads llama-server uses for inference (-t / --threads).
     // Previously no -t flag was passed at all, leaving llama-server to
     // auto-detect. On machines with a performance/efficiency core split
@@ -156,7 +190,7 @@ public class LlamaServerManager {
         }
 
         LlamaBinaryManager.ensureInstalled();
-        port = findFreePort();
+        port = (FIXED_SERVER_PORT != null) ? FIXED_SERVER_PORT : findFreePort();
 
         // startServer() may throw (e.g. model-load timeout). If it does,
         // waitForReady() internally calls stopInternal(), resetting port/apiKey/
@@ -269,10 +303,12 @@ public class LlamaServerManager {
             "llama-server did not become ready within " + (timeoutMs / 1000) + "s "
             + "(process was alive, health check against " + healthUrl + " never returned 200). "
             + "Last connection error: " + (lastConnectFailure != null ? lastConnectFailure.toString() : "none — got non-200 responses only") + ". "
-            + "If this environment's network setup means " + SERVER_HOST + " does not route to the bot's own "
-            + "child processes (e.g. some VM/VDI network virtualization or VPN split-tunnel software), "
-            + "set the LOCALAI_SERVER_HOST environment variable to a working address and restart the "
-            + "Bot Agent (or set -Dlocalai.server.host=<ip> as a JVM argument if you cannot set env vars). "
+            + "If this environment's network setup means " + SERVER_HOST + ":" + port + " does not route to "
+            + "the bot's own child processes (e.g. some VM/VDI network virtualization, VPN split-tunnel "
+            + "software, or a firewall/endpoint policy that blocks a random ephemeral port like " + port + "), "
+            + "set the LOCALAI_SERVER_HOST environment variable to a working address and/or "
+            + "LOCALAI_SERVER_PORT to a fixed port your network policy allows, then restart the Bot Agent "
+            + "(or -Dlocalai.server.host / -Dlocalai.server.port as JVM arguments if you cannot set env vars). "
             + "Last server log lines:\n" + tail);
     }
 
