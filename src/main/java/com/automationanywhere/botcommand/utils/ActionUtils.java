@@ -23,4 +23,21 @@ public class ActionUtils {
                 ". Valid options: " + ModelManager.ModelType.supportedModelIds());
         }
     }
+
+    /**
+     * Convert an action's optional "Server Port" field to the Integer override
+     * LlamaInference/LlamaServerManager expect. Null, non-positive, or invalid
+     * values all mean "no override" — the default automatic port behavior.
+     */
+    public static Integer resolveServerPort(Double serverPort) {
+        if (serverPort == null || serverPort <= 0) {
+            return null;
+        }
+        int port = serverPort.intValue();
+        if (port < 1 || port > 65535) {
+            logger.warn("Server Port value {} is out of range (1-65535) — using automatic port instead", port);
+            return null;
+        }
+        return port;
+    }
 }

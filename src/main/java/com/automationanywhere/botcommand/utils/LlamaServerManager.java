@@ -172,11 +172,24 @@ public class LlamaServerManager {
 
     /**
      * Ensure llama-server is running with the given model.
-     * Fast-path: reuses a healthy server when the model already matches.
+     * Fast-path: reuses a healthy server when the model already matches (and,
+     * when a specific port was requested, only when it's already bound there).
      * Slow-path: stops the current server and starts a new one.
+     *
+     * @param portOverride a specific port to bind to (e.g. from an action's
+     *                     optional "Server Port" field), or null/&lt;=0 to use
+     *                     the LOCALAI_SERVER_PORT env var / system property if
+     *                     set, falling back to an OS-assigned dynamic port —
+     *                     the original zero-config behavior. Passing this per
+     *                     call is friendlier for locked-down network policies
+     *                     that require a fixed, allowlisted port than editing
+     *                     an environment variable, since it's just a bot
+     *                     action field with a default that changes nothing
+     *                     for everyone else.
      */
-    public synchronized void ensureModelLoaded(ModelManager.ModelType modelType) throws Exception {
-        if (isRunning() && modelType.getId().equals(currentModelId)) {
+    public synchronized void ensureModelLoaded(ModelManager.ModelType modelType, Integer portOverride) throws Exception {
+        boolean portMismatch = portOverride != null && portOverride > 0 && isRunning() && port != portOverride;
+        if (isRunning() && modelType.getId().equals(currentModelId) && !portMismatch) {
             logger.debug("Reusing running server for model: {}", currentModelId);
             return;
         }
@@ -190,7 +203,8 @@ public class LlamaServerManager {
         }
 
         LlamaBinaryManager.ensureInstalled();
-        port = (FIXED_SERVER_PORT != null) ? FIXED_SERVER_PORT : findFreePort();
+        port = (portOverride != null && portOverride > 0) ? portOverride
+             : (FIXED_SERVER_PORT != null ? FIXED_SERVER_PORT : findFreePort());
 
         // startServer() may throw (e.g. model-load timeout). If it does,
         // waitForReady() internally calls stopInternal(), resetting port/apiKey/

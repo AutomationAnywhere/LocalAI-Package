@@ -104,7 +104,7 @@ public class TestQwen25 {
                 "qwen3-4b",
                 120.0,  // 2 minute timeout
                 0.3
-            );
+            , 0.0);
 
             long elapsed = System.currentTimeMillis() - startTime;
             String response = ((StringValue) result.get("response")).get();
@@ -152,7 +152,7 @@ public class TestQwen25 {
                 "qwen3-4b",
                 120.0,
                 0.2  // Low temperature for structured output
-            );
+            , 0.0);
 
             long elapsed = System.currentTimeMillis() - startTime;
             String response = ((StringValue) result.get("response")).get();
@@ -200,7 +200,7 @@ public class TestQwen25 {
                 "qwen3-4b",
                 120.0,
                 0.7
-            );
+            , 0.0);
 
             long elapsed = System.currentTimeMillis() - startTime;
             String response = ((StringValue) result.get("response")).get();

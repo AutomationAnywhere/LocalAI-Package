@@ -40,7 +40,7 @@ public class TestClassifyText {
         System.out.println("\n[TEST] Empty text validation");
 
         try {
-            classifyAction.execute("", "urgent, normal, low", "qwen3-4b", false, false, 30.0);
+            classifyAction.execute("", "urgent, normal, low", "qwen3-4b", false, false, 30.0, 0.0);
             fail("Should throw exception for empty text");
 
         } catch (Exception e) {
@@ -57,7 +57,7 @@ public class TestClassifyText {
         System.out.println("\n[TEST] Empty categories validation");
 
         try {
-            classifyAction.execute("Test message", "", "qwen3-4b", false, false, 30.0);
+            classifyAction.execute("Test message", "", "qwen3-4b", false, false, 30.0, 0.0);
             fail("Should throw exception for empty categories");
 
         } catch (Exception e) {
@@ -74,7 +74,7 @@ public class TestClassifyText {
         System.out.println("\n[TEST] Invalid model name");
 
         try {
-            classifyAction.execute("Test", "cat1, cat2", "invalid-model", false, false, 30.0);
+            classifyAction.execute("Test", "cat1, cat2", "invalid-model", false, false, 30.0, 0.0);
             fail("Should throw exception for invalid model name");
 
         } catch (Exception e) {
@@ -134,7 +134,7 @@ public class TestClassifyText {
                 false,
                 false,
                 60.0
-            );
+            , 0.0);
 
             long elapsed = System.currentTimeMillis() - startTime;
             System.out.println("\n✓ Completed in " + elapsed + "ms");
@@ -168,7 +168,7 @@ public class TestClassifyText {
                 true,  // include confidence
                 true,  // include explanation
                 45.0
-            );
+            , 0.0);
 
             System.out.println("Classification result: " + ((StringValue) result.get("category")).get());
 

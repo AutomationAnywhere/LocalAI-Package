@@ -40,7 +40,7 @@ public class TestGemma270MInference {
     @Test
     public void testBasicPrompt() {
         Prompt action = new Prompt();
-        DictionaryValue result = action.execute("Q: What is the capital of Japan? A:", MODEL, TIMEOUT, 0.1);
+        DictionaryValue result = action.execute("Q: What is the capital of Japan? A:", MODEL, TIMEOUT, 0.1, 0.0);
         String response = ((StringValue) result.get("response")).get();
         System.out.println("[Prompt] response: " + response);
         assertNotNull(response);
@@ -53,7 +53,7 @@ public class TestGemma270MInference {
         String text = "This Agreement is entered into by and between Party A and Party B, "
             + "effective as of the date of signing, subject to the terms herein.";
         DictionaryValue result = action.execute(
-            text, "invoice, receipt, contract, report", MODEL, false, false, TIMEOUT);
+            text, "invoice, receipt, contract, report", MODEL, false, false, TIMEOUT, 0.0);
         String category = ((StringValue) result.get("category")).get();
         assertTrue(category.toLowerCase().contains("contract"),
             "Expected 'contract' in category, got: " + category);
@@ -63,7 +63,7 @@ public class TestGemma270MInference {
     public void testRedactPIINotReliable() {
         RedactPII action = new RedactPII();
         String input = "Contact John Smith at john.smith@example.com or 555-123-4567.";
-        DictionaryValue result = action.execute(input, "all", "[REDACTED]", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(input, "all", "[REDACTED]", MODEL, TIMEOUT, 0.0);
         String redacted = ((StringValue) result.get("redacted_text")).get();
         assertFalse(redacted.contains("john.smith@example.com"), "Email should be redacted");
         assertFalse(redacted.contains("555-123-4567"), "Phone should be redacted");

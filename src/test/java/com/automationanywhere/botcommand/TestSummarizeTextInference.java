@@ -37,7 +37,7 @@ public class TestSummarizeTextInference {
             + "rose slightly due to increased headcount in engineering. The board "
             + "approved a new expansion into two additional markets for next quarter.";
 
-        DictionaryValue result = action.execute(input, "short", null, MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(input, "short", null, MODEL, TIMEOUT, 0.0);
 
         assertNotNull(result, "Result should not be null");
         String summary = ((StringValue) result.get("summary")).get();

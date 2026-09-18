@@ -43,6 +43,13 @@ This approach means:
 - **Automatic updates** — new model families (Qwen3, Gemma 4, etc.) are supported immediately
 - **Identical behavior on Windows and macOS** — same binary, same HTTP API
 
+### Network overrides
+
+By default the inference server binds to `127.0.0.1` on a random free port — zero configuration needed for the overwhelming majority of installs. Two rare situations need an override:
+
+- **Loopback doesn't route to the bot's own child process** (some VM/VDI network virtualization or VPN split-tunnel software): set the `LOCALAI_SERVER_HOST` environment variable to a working address (or `-Dlocalai.server.host=<ip>` as a JVM argument).
+- **Firewall/network policy only allows a specific, known port** (a random port every run can't be allowlisted): every inference action has a **Server Port (Advanced)** field — set it to your allowed port instead of editing environment variables per machine. Leave it at `0` for normal automatic behavior. A `LOCALAI_SERVER_PORT` environment variable (or `-Dlocalai.server.port=<port>`) is also available as a machine-wide fallback if you'd rather not set it per action, but the action field takes precedence when both are set.
+
 ## Actions
 
 ### Validate Device
@@ -68,6 +75,7 @@ Send any text prompt to a local SLM and get a response. Use for question answeri
 | Prompt Text | Text Area | *required* | Your instruction or question |
 | Model | Select | `qwen3-4b` | Which model to use |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 | Temperature | Number | 0.3 | Randomness (0.0 = deterministic, 1.0 = creative) |
 
 **Returns:** Dictionary with key `response` (String).
@@ -87,6 +95,7 @@ Categorize text into one of your predefined categories. Useful for routing ticke
 | Include Confidence | Checkbox | false | Append confidence score (0-1) |
 | Include Explanation | Checkbox | false | Append brief explanation |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** String — `category` or `category|0.95|explanation` when options enabled.
 
@@ -105,6 +114,7 @@ Convert CSV, TSV, key-value pairs, tables, or lists into valid JSON.
 | Output Type | Select | `array` | object `{}` or array `[{}]` |
 | Model | Select | `qwen3-4b` | Which model to use |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** String — validated JSON output.
 
@@ -123,6 +133,7 @@ Clean up inconsistent data formats — dates, phone numbers, addresses, names, e
 | Model | Select | `qwen3-4b` | Which model to use |
 | Preserve Original on Failure | Checkbox | true | Return input if normalization fails |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** String — normalized/standardized text.
 
@@ -138,6 +149,7 @@ Make arbitrary text safe for embedding in JSON strings. Uses model-based intelli
 | Input Text | Text | *required* | Text to sanitize |
 | Model | Select | `qwen3-4b` | Which model to use |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** String — JSON-safe text with properly escaped characters.
 
@@ -154,6 +166,7 @@ Extract structured fields from unstructured text (invoices, emails, forms, etc.)
 | Fields to Extract | Text | *required* | Comma-separated field names |
 | Model | Select | `qwen3-4b` | Which model to use |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** Dictionary of extracted field → value pairs.
 
@@ -170,6 +183,7 @@ Condense long text into a concise summary.
 | Summary Length | Select | `medium` | short / medium / long |
 | Model | Select | `qwen3-4b` | Which model to use |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** String — the summary.
 
@@ -187,6 +201,7 @@ Identify and redact personally identifiable information from text.
 | Replacement | Text | `[REDACTED]` | Replacement token |
 | Model | Select | `qwen3-4b` | Which model to use |
 | Timeout (seconds) | Number | 30 | Max generation time |
+| Server Port (Advanced) | Number | 0 | Pin to a specific TCP port instead of a random one; only needed in locked-down network/firewall setups. 0 = automatic |
 
 **Returns:** String — text with PII replaced.
 

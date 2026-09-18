@@ -110,7 +110,11 @@ public class SummarizeText {
         @Idx(index = "5", type = AttributeType.NUMBER)
         @Pkg(label = "Timeout (seconds)", description = "Maximum time to wait for processing", default_value = "45", default_value_type = DataType.NUMBER)
         @NotEmpty
-        Double timeoutSeconds
+        Double timeoutSeconds,
+
+        @Idx(index = "6", type = AttributeType.NUMBER)
+        @Pkg(label = "Server Port (Advanced)", description = "Optional: pin the local inference server to a specific TCP port instead of a random one. Only needed in locked-down network/firewall environments that require a fixed, allowlisted port. Leave as 0 for normal automatic behavior.", default_value = "0", default_value_type = DataType.NUMBER)
+        Double serverPort
 
     ) {
 
@@ -133,7 +137,7 @@ public class SummarizeText {
             ModelManager.ModelType modelType = ActionUtils.resolveModelType(modelName);
 
             long startTime = System.currentTimeMillis();
-            LlamaInference inference = new LlamaInference(modelType);
+            LlamaInference inference = new LlamaInference(modelType, ActionUtils.resolveServerPort(serverPort));
             long loadTime = System.currentTimeMillis() - startTime;
             if (loadTime > 1000) {
                 logger.info("Model loaded in {}ms", loadTime);

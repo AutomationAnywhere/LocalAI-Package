@@ -32,7 +32,7 @@ public class TestGemma3_1BInference {
     @Test
     public void testBasicPrompt() {
         Prompt action = new Prompt();
-        DictionaryValue result = action.execute("Q: What is the capital of Japan? A:", MODEL, TIMEOUT, 0.1);
+        DictionaryValue result = action.execute("Q: What is the capital of Japan? A:", MODEL, TIMEOUT, 0.1, 0.0);
         String response = ((StringValue) result.get("response")).get();
         System.out.println("[Prompt] response: " + response);
         assertNotNull(response);
@@ -63,7 +63,7 @@ public class TestGemma3_1BInference {
 
     private void assertClassification(String text, String expectedCategory) {
         ClassifyText action = new ClassifyText();
-        DictionaryValue result = action.execute(text, "invoice, receipt, contract, report", MODEL, false, false, TIMEOUT);
+        DictionaryValue result = action.execute(text, "invoice, receipt, contract, report", MODEL, false, false, TIMEOUT, 0.0);
         String category = ((StringValue) result.get("category")).get();
         System.out.println("[ClassifyText] expected=" + expectedCategory + " -> got: " + category);
         assertTrue(category.toLowerCase().contains(expectedCategory),
@@ -74,7 +74,7 @@ public class TestGemma3_1BInference {
     public void testRedactPII() {
         RedactPII action = new RedactPII();
         String input = "Contact John Smith at john.smith@example.com or 555-123-4567.";
-        DictionaryValue result = action.execute(input, "all", "[REDACTED]", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(input, "all", "[REDACTED]", MODEL, TIMEOUT, 0.0);
         String redacted = ((StringValue) result.get("redacted_text")).get();
         System.out.println("[RedactPII] input:    " + input);
         System.out.println("[RedactPII] redacted: " + redacted);
@@ -87,7 +87,7 @@ public class TestGemma3_1BInference {
     public void testTransformCSVToJSON() {
         TransformToJSON action = new TransformToJSON();
         String csv = "name,age,city\nJohn Smith,34,Boston\nJane Doe,29,Austin";
-        DictionaryValue result = action.execute(csv, "csv", "compact", "array", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(csv, "csv", "compact", "array", MODEL, TIMEOUT, 0.0);
         String json = ((StringValue) result.get("json")).get();
         System.out.println("[TransformToJSON:csv] output: " + json);
         JsonElement parsed = JsonParser.parseString(json);
@@ -101,7 +101,7 @@ public class TestGemma3_1BInference {
     public void testTransformKeyValueToJSON() {
         TransformToJSON action = new TransformToJSON();
         String kv = "Name: Acme Corp\nInvoice: 12345\nAmount: 1250.00";
-        DictionaryValue result = action.execute(kv, "key-value", "compact", "object", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(kv, "key-value", "compact", "object", MODEL, TIMEOUT, 0.0);
         String json = ((StringValue) result.get("json")).get();
         System.out.println("[TransformToJSON:key-value] output: " + json);
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
@@ -113,7 +113,7 @@ public class TestGemma3_1BInference {
     public void testSanitizeBrokenJSON() {
         SanitizeJSON action = new SanitizeJSON();
         String broken = "{\"name\": \"John \"The Rock\" Smith\", \"age\": 34,}";
-        DictionaryValue result = action.execute(broken, "compact", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(broken, "compact", MODEL, TIMEOUT, 0.0);
         String json = ((StringValue) result.get("sanitized_json")).get();
         System.out.println("[SanitizeJSON] input:  " + broken);
         System.out.println("[SanitizeJSON] output: " + json);
@@ -131,7 +131,7 @@ public class TestGemma3_1BInference {
             + "costs also increased due to expanded headcount in engineering and sales. "
             + "Management reiterated full-year guidance and highlighted plans to launch two new "
             + "product lines in the next two quarters.";
-        DictionaryValue result = action.execute(text, "short", null, MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(text, "short", null, MODEL, TIMEOUT, 0.0);
         String summary = ((StringValue) result.get("summary")).get();
         System.out.println("[SummarizeText] summary: " + summary);
         assertNotNull(summary);
@@ -144,14 +144,14 @@ public class TestGemma3_1BInference {
         ExtractData action = new ExtractData();
         String text = "INVOICE #12345\nDate: 2026-01-15\nBill To: Acme Corp\nAmount Due: $1,250.00";
         String fields = "invoice_number: the invoice ID\ntotal_amount: the total amount due\nvendor_name: who the bill is to";
-        DictionaryValue result = action.execute(text, fields, MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(text, fields, MODEL, TIMEOUT, 0.0);
         assertFalse(ExtractData.NOT_FOUND.equals(((StringValue) result.get("invoice_number")).get()));
     }
 
     @Test(enabled = false) // phone normalization doesn't reliably comply with requested format — see NormalizeAndStandardize.java
     public void testNormalizePhoneNotReliable() {
         NormalizeAndStandardize action = new NormalizeAndStandardize();
-        DictionaryValue result = action.execute("Call me at (555) 123-4567", "phone", "E.164", MODEL, true, TIMEOUT);
+        DictionaryValue result = action.execute("Call me at (555) 123-4567", "phone", "E.164", MODEL, true, TIMEOUT, 0.0);
         String normalized = ((StringValue) result.get("result")).get();
         assertTrue(normalized.startsWith("+1"), "Expected E.164 format with +1 country code, got: " + normalized);
     }

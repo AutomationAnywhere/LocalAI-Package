@@ -258,7 +258,7 @@ public class TestNewModels {
 
         boolean exceptionThrown = false;
         try {
-            promptAction.execute("Test", "gemma4-e3b", 30.0, 0.3);
+            promptAction.execute("Test", "gemma4-e3b", 30.0, 0.3, 0.0);
         } catch (Exception e) {
             exceptionThrown = true;
             assertTrue(e.getMessage().contains("Invalid model name"));
@@ -284,7 +284,7 @@ public class TestNewModels {
 
         long startTime = System.currentTimeMillis();
 
-        DictionaryValue result = promptAction.execute(prompt, "gemma4-e2b", 120.0, 0.3);
+        DictionaryValue result = promptAction.execute(prompt, "gemma4-e2b", 120.0, 0.3, 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
 
@@ -312,7 +312,7 @@ public class TestNewModels {
 
         long startTime = System.currentTimeMillis();
 
-        DictionaryValue result = promptAction.execute(prompt, "deepseek-r1-1.5b", 120.0, 0.3);
+        DictionaryValue result = promptAction.execute(prompt, "deepseek-r1-1.5b", 120.0, 0.3, 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
 

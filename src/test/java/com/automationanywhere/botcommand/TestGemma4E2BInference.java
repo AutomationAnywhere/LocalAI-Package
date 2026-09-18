@@ -157,7 +157,7 @@ public class TestGemma4E2BInference {
         System.out.println("\n[TEST] Gemma 4 E2B - Question Answering");
 
         String prompt = "Q: What is the capital of France? A:";
-        DictionaryValue result = promptAction.execute(prompt, MODEL, 120.0, 0.3);
+        DictionaryValue result = promptAction.execute(prompt, MODEL, 120.0, 0.3, 0.0);
 
         assertNotNull(result);
         assertNotNull(((StringValue) result.get("response")).get());
@@ -170,7 +170,7 @@ public class TestGemma4E2BInference {
     public void testMathReasoning() {
         System.out.println("\n[TEST] Gemma 4 E2B - Math Reasoning");
 
-        DictionaryValue result = promptAction.execute("Q: What is 15 + 27? A:", MODEL, 120.0, 0.1);
+        DictionaryValue result = promptAction.execute("Q: What is 15 + 27? A:", MODEL, 120.0, 0.1, 0.0);
 
         assertNotNull(result);
         assertFalse(((StringValue) result.get("response")).get().isEmpty());
@@ -186,7 +186,7 @@ public class TestGemma4E2BInference {
         DictionaryValue result = classifyAction.execute(
             "This product exceeded all my expectations. Absolutely fantastic quality!",
             "positive, negative, neutral", MODEL, true, false, 120.0
-        );
+        , 0.0);
 
         assertNotNull(result);
         assertFalse(((StringValue) result.get("category")).get().isEmpty());
@@ -201,7 +201,7 @@ public class TestGemma4E2BInference {
         DictionaryValue result = transformAction.execute(
             "Name,Age,City\nAlice,28,Boston\nBob,35,Chicago",
             "csv", "compact", "array", MODEL, 120.0
-        );
+        , 0.0);
 
         assertNotNull(result);
         assertTrue(isValidJSON(((StringValue) result.get("json")).get()), "Output should be valid JSON");
@@ -215,7 +215,7 @@ public class TestGemma4E2BInference {
 
         DictionaryValue result = normalizeAction.execute(
             "January 15, 2025", "date", "YYYY-MM-DD", MODEL, true, 120.0
-        );
+        , 0.0);
 
         assertNotNull(result);
         assertFalse(((StringValue) result.get("result")).get().isEmpty());

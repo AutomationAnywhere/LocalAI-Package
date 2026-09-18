@@ -193,7 +193,7 @@ public class TestSanitizeJSON {
         System.out.println("(First run: model download + loading may take 1-3 minutes)\n");
 
         long start = System.currentTimeMillis();
-        DictionaryValue result = sanitizeAction.execute(brokenJson, "compact", "qwen3-4b", 60.0);
+        DictionaryValue result = sanitizeAction.execute(brokenJson, "compact", "qwen3-4b", 60.0, 0.0);
         long elapsed = System.currentTimeMillis() - start;
 
         String sanitized = ((StringValue) result.get("sanitized_json")).get();
@@ -217,7 +217,7 @@ public class TestSanitizeJSON {
 
         System.out.println("Input: " + brokenJson);
 
-        DictionaryValue result = sanitizeAction.execute(brokenJson, "compact", "qwen3-4b", 60.0);
+        DictionaryValue result = sanitizeAction.execute(brokenJson, "compact", "qwen3-4b", 60.0, 0.0);
         String sanitized = ((StringValue) result.get("sanitized_json")).get();
         String status    = ((StringValue) result.get("status")).get();
 

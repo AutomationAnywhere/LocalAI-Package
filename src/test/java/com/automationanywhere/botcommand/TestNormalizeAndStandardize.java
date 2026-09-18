@@ -40,7 +40,7 @@ public class TestNormalizeAndStandardize {
         System.out.println("\n[TEST] Empty text validation");
 
         try {
-            normalizeAction.execute("", "phone", "digits only", "qwen3-4b", false, 30.0);
+            normalizeAction.execute("", "phone", "digits only", "qwen3-4b", false, 30.0, 0.0);
             fail("Should throw exception for empty text");
 
         } catch (Exception e) {
@@ -57,7 +57,7 @@ public class TestNormalizeAndStandardize {
         System.out.println("\n[TEST] Invalid model name");
 
         try {
-            normalizeAction.execute("Test", "phone", "digits only", "invalid-model", false, 30.0);
+            normalizeAction.execute("Test", "phone", "digits only", "invalid-model", false, 30.0, 0.0);
             fail("Should throw exception for invalid model name");
 
         } catch (Exception e) {
@@ -119,7 +119,7 @@ public class TestNormalizeAndStandardize {
                 "qwen3-4b",
                 true,
                 60.0
-            );
+            , 0.0);
 
             long elapsed = System.currentTimeMillis() - startTime;
             System.out.println("\n✓ Completed in " + elapsed + "ms");
@@ -155,7 +155,7 @@ public class TestNormalizeAndStandardize {
                 "qwen3-4b",
                 true,
                 45.0
-            );
+            , 0.0);
 
             System.out.println("Output: " + ((StringValue) result.get("result")).get());
 
@@ -189,7 +189,7 @@ public class TestNormalizeAndStandardize {
                 "qwen3-4b",
                 true,
                 45.0
-            );
+            , 0.0);
 
             System.out.println("Output: " + ((StringValue) result.get("result")).get());
 

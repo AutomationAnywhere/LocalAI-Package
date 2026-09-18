@@ -62,7 +62,7 @@ public class TestDeepSeekR1Inference {
 
         long startTime = System.currentTimeMillis();
 
-        DictionaryValue result = promptAction.execute(prompt, MODEL, TIMEOUT, 0.3);
+        DictionaryValue result = promptAction.execute(prompt, MODEL, TIMEOUT, 0.3, 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
         System.out.println("Completed in " + elapsed + "ms");
@@ -86,7 +86,7 @@ public class TestDeepSeekR1Inference {
         String prompt = "Q: What is 2 + 2? A:";
         System.out.println("Prompt: " + prompt);
 
-        DictionaryValue result = promptAction.execute(prompt, MODEL, TIMEOUT, 0.1);
+        DictionaryValue result = promptAction.execute(prompt, MODEL, TIMEOUT, 0.1, 0.0);
 
         String response = ((StringValue) result.get("response")).get();
         System.out.println("Response: [" + response + "]");
@@ -114,7 +114,7 @@ public class TestDeepSeekR1Inference {
 
         long startTime = System.currentTimeMillis();
 
-        DictionaryValue result = promptAction.execute(prompt, MODEL, TIMEOUT, 0.3);
+        DictionaryValue result = promptAction.execute(prompt, MODEL, TIMEOUT, 0.3, 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
         System.out.println("Completed in " + elapsed + "ms");
@@ -139,7 +139,7 @@ public class TestDeepSeekR1Inference {
 
         DictionaryValue result = classifyAction.execute(
             text, "invoice, receipt, contract, report", MODEL, false, false, TIMEOUT
-        );
+        , 0.0);
 
         String category = ((StringValue) result.get("category")).get();
         System.out.println("Classification: " + category);
@@ -170,7 +170,7 @@ public class TestDeepSeekR1Inference {
             System.out.println("Inference " + (i + 1) + ": " + prompts[i]);
 
             long startTime = System.currentTimeMillis();
-            DictionaryValue result = promptAction.execute(prompts[i], MODEL, TIMEOUT, 0.3);
+            DictionaryValue result = promptAction.execute(prompts[i], MODEL, TIMEOUT, 0.3, 0.0);
             long elapsed = System.currentTimeMillis() - startTime;
 
             String response = ((StringValue) result.get("response")).get();

@@ -19,8 +19,17 @@ public class LlamaInference {
     private static final int MAX_TOKENS = 100;
 
     public LlamaInference(ModelManager.ModelType modelType) throws Exception {
+        this(modelType, null);
+    }
+
+    /**
+     * @param portOverride optional fixed port for the inference server (see
+     *                     LlamaServerManager.ensureModelLoaded); null/&lt;=0
+     *                     for the default automatic behavior.
+     */
+    public LlamaInference(ModelManager.ModelType modelType, Integer portOverride) throws Exception {
         this.modelType = modelType;
-        LlamaServerManager.getInstance().ensureModelLoaded(modelType);
+        LlamaServerManager.getInstance().ensureModelLoaded(modelType, portOverride);
         logger.info("LlamaInference ready for model: {}", modelType.getId());
     }
 

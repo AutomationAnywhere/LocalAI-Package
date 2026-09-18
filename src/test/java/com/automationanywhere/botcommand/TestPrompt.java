@@ -39,7 +39,7 @@ public class TestPrompt {
 
         boolean exceptionThrown = false;
         try {
-            promptAction.execute("", "qwen3-4b", 30.0, 0.3);
+            promptAction.execute("", "qwen3-4b", 30.0, 0.3, 0.0);
         } catch (Exception e) {
             System.out.println("Expected error: " + e.getMessage());
             exceptionThrown = true;
@@ -54,7 +54,7 @@ public class TestPrompt {
 
         boolean exceptionThrown = false;
         try {
-            promptAction.execute("Test prompt", "invalid-model", 30.0, 0.3);
+            promptAction.execute("Test prompt", "invalid-model", 30.0, 0.3, 0.0);
         } catch (Exception e) {
             System.out.println("Expected error: " + e.getMessage());
             exceptionThrown = true;
@@ -105,7 +105,7 @@ public class TestPrompt {
             "qwen3-4b",
             60.0,
             0.3
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
 
@@ -142,7 +142,7 @@ public class TestPrompt {
             "qwen3-4b",
             30.0,
             0.3
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
 
@@ -181,7 +181,7 @@ public class TestPrompt {
             "qwen3-4b",
             30.0,
             0.3
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
 

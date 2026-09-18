@@ -44,7 +44,7 @@ public class TestTransformToJSON {
         System.out.println("\n[TEST] Empty text validation");
 
         try {
-            transformAction.execute("", "csv", "compact", "array", "qwen3-4b", 30.0);
+            transformAction.execute("", "csv", "compact", "array", "qwen3-4b", 30.0, 0.0);
             fail("Should throw exception for empty text");
 
         } catch (Exception e) {
@@ -61,7 +61,7 @@ public class TestTransformToJSON {
         System.out.println("\n[TEST] Invalid model name");
 
         try {
-            transformAction.execute("test", "csv", "compact", "array", "invalid-model", 30.0);
+            transformAction.execute("test", "csv", "compact", "array", "invalid-model", 30.0, 0.0);
             fail("Should throw exception for invalid model name");
 
         } catch (Exception e) {
@@ -130,7 +130,7 @@ public class TestTransformToJSON {
             "array",
             "qwen3-4b",
             60.0
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
         System.out.println("\n✓ Completed in " + elapsed + "ms");
@@ -161,7 +161,7 @@ public class TestTransformToJSON {
             "object",
             "qwen3-4b",
             60.0
-        );
+        , 0.0);
 
         System.out.println("Output JSON: " + ((StringValue) result.get("json")).get());
 
@@ -187,7 +187,7 @@ public class TestTransformToJSON {
             "array",
             "qwen3-4b",
             45.0
-        );
+        , 0.0);
 
         System.out.println("Output JSON: " + ((StringValue) result.get("json")).get());
 
@@ -222,7 +222,7 @@ public class TestTransformToJSON {
             "array",
             "gemma3-4b",
             60.0
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
         System.out.println("\n✓ Completed in " + elapsed + "ms");
@@ -257,7 +257,7 @@ public class TestTransformToJSON {
             "object",
             "gemma3-4b",
             60.0
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
         System.out.println("\n✓ Completed in " + elapsed + "ms");
@@ -289,7 +289,7 @@ public class TestTransformToJSON {
             "array",
             "gemma3-4b",
             45.0
-        );
+        , 0.0);
 
         long elapsed = System.currentTimeMillis() - startTime;
         System.out.println("\n✓ Completed in " + elapsed + "ms");

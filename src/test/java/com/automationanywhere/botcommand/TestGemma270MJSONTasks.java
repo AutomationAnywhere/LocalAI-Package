@@ -50,7 +50,7 @@ public class TestGemma270MJSONTasks {
     public void testSanitizeBrokenJSONNotReliable() {
         SanitizeJSON action = new SanitizeJSON();
         String broken = "{\"name\": \"John \"The Rock\" Smith\", \"age\": 34,}";
-        DictionaryValue result = action.execute(broken, "compact", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(broken, "compact", MODEL, TIMEOUT, 0.0);
         String json = ((StringValue) result.get("sanitized_json")).get();
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
         String name = obj.get("name").getAsString();
@@ -62,7 +62,7 @@ public class TestGemma270MJSONTasks {
     public void testTransformCSVToJSONNotReliable() {
         TransformToJSON action = new TransformToJSON();
         String csv = "name,age,city\nJohn Smith,34,Boston\nJane Doe,29,Austin";
-        DictionaryValue result = action.execute(csv, "csv", "compact", "array", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(csv, "csv", "compact", "array", MODEL, TIMEOUT, 0.0);
         String json = ((StringValue) result.get("json")).get();
         JsonElement parsed = JsonParser.parseString(json);
         String flat = json.toLowerCase();
@@ -74,7 +74,7 @@ public class TestGemma270MJSONTasks {
     public void testTransformKeyValueToJSONNotReliable() {
         TransformToJSON action = new TransformToJSON();
         String kv = "Name: Acme Corp\nInvoice: 12345\nAmount: 1250.00";
-        DictionaryValue result = action.execute(kv, "key-value", "compact", "object", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(kv, "key-value", "compact", "object", MODEL, TIMEOUT, 0.0);
         String json = ((StringValue) result.get("json")).get();
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
         assertTrue(obj.has("Invoice"), "Expected 'Invoice' field from input to be present, got: " + json);

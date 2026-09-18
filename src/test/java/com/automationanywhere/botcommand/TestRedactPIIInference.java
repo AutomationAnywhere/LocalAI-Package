@@ -34,7 +34,7 @@ public class TestRedactPIIInference {
         RedactPII action = new RedactPII();
         String input = "Contact John Smith at john.smith@example.com or 555-123-4567.";
 
-        DictionaryValue result = action.execute(input, "all", "[REDACTED]", MODEL, TIMEOUT);
+        DictionaryValue result = action.execute(input, "all", "[REDACTED]", MODEL, TIMEOUT, 0.0);
 
         assertNotNull(result, "Result should not be null");
         String redacted = ((StringValue) result.get("redacted_text")).get();

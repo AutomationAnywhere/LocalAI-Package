@@ -123,7 +123,11 @@ public class Prompt {
         @Idx(index = "4", type = AttributeType.NUMBER)
         @Pkg(label = "Temperature", description = "Controls randomness in generation. Range: 0.0-1.0. Low (0.0-0.3) = focused, accurate, deterministic responses. Medium (0.4-0.7) = balanced creativity. High (0.8-1.0) = creative, diverse, but less predictable. Recommended: 0.3 for factual tasks, 0.7 for creative writing.", default_value = "0.3", default_value_type = DataType.NUMBER)
         @NotEmpty
-        Double temperature
+        Double temperature,
+
+        @Idx(index = "5", type = AttributeType.NUMBER)
+        @Pkg(label = "Server Port (Advanced)", description = "Optional: pin the local inference server to a specific TCP port instead of a random one. Only needed in locked-down network/firewall environments that require a fixed, allowlisted port. Leave as 0 for normal automatic behavior.", default_value = "0", default_value_type = DataType.NUMBER)
+        Double serverPort
 
     ) {
 
@@ -161,7 +165,7 @@ public class Prompt {
 
             // Initialize inference engine (will load model if needed)
             long startTime = System.currentTimeMillis();
-            LlamaInference inference = new LlamaInference(modelType);
+            LlamaInference inference = new LlamaInference(modelType, ActionUtils.resolveServerPort(serverPort));
             long loadTime = System.currentTimeMillis() - startTime;
 
             if (loadTime > 1000) {
