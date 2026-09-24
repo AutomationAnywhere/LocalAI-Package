@@ -3,7 +3,7 @@
 ![Java 11+](https://img.shields.io/badge/Java-11%2B-informational)
 ![Automation Anywhere](https://img.shields.io/badge/Automation%20Anywhere-A360-blue)
 ![llama.cpp](https://img.shields.io/badge/llama.cpp-b9481-green)
-![Version](https://img.shields.io/badge/version-2.12.67-orange)
+![Version](https://img.shields.io/badge/version-2.12.94-orange)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
 
 Run AI inference **entirely on-device** with no cloud APIs, no GPU, and no internet required at runtime (after initial setup). This Automation Anywhere package brings Small Language Models (SLMs) directly into your bot workflows using the official [llama.cpp](https://github.com/ggerganov/llama.cpp) CPU binaries and quantized GGUF models.
