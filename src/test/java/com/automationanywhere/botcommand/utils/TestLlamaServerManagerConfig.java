@@ -30,26 +30,53 @@ public class TestLlamaServerManagerConfig {
         assertEquals(LlamaServerManager.defaultThreadCount(0), 1);
     }
 
-    // ── Context size ──────────────────────────────────────────────────────────
+    // ── Context size: sized to the request ────────────────────────────────────
+
+    private static final long GB = 1024L * 1024 * 1024;
 
     @Test
-    public void testLargeWindowModelsAreCappedByDefault() {
-        assertEquals(LlamaServerManager.effectiveContextSize(131072, null), LlamaServerManager.DEFAULT_CONTEXT_CAP);
-        assertEquals(LlamaServerManager.effectiveContextSize(32768, null), LlamaServerManager.DEFAULT_CONTEXT_CAP);
+    public void testShortPromptGetsMinimumContext() {
+        assertEquals(LlamaServerManager.contextSizeFor(300, 32768, 16384), LlamaServerManager.MIN_CONTEXT);
+        assertEquals(LlamaServerManager.contextSizeFor(0, 32768, 16384), LlamaServerManager.MIN_CONTEXT);
     }
 
     @Test
-    public void testSmallWindowModelKeepsItsOwnWindow() {
-        assertEquals(LlamaServerManager.effectiveContextSize(4096, null), 4096);
+    public void testContextGrowsToSmallestFittingPowerOfTwo() {
+        // 4096 * 0.9 = 3686 budget, so 3687 needs 8192
+        assertEquals(LlamaServerManager.contextSizeFor(3686, 131072, 32768), 4096);
+        assertEquals(LlamaServerManager.contextSizeFor(3687, 131072, 32768), 8192);
+        assertEquals(LlamaServerManager.contextSizeFor(10000, 131072, 32768), 16384);
     }
 
     @Test
-    public void testOverrideRaisesCap() {
-        assertEquals(LlamaServerManager.effectiveContextSize(131072, 32768), 32768);
+    public void testChosenContextAlwaysFitsWhenUnderLimits() {
+        for (int required = 0; required <= 29000; required += 250) {
+            int ctx = LlamaServerManager.contextSizeFor(required, 131072, 32768);
+            assertTrue(LlamaServerManager.contextBudget(ctx) >= required, "required=" + required + " ctx=" + ctx);
+        }
     }
 
     @Test
-    public void testOverrideIsClampedToModelMaximum() {
-        assertEquals(LlamaServerManager.effectiveContextSize(8192, 65536), 8192);
+    public void testContextStopsAtMachineCeiling() {
+        assertEquals(LlamaServerManager.contextSizeFor(100000, 131072, 16384), 16384);
+    }
+
+    @Test
+    public void testContextStopsAtModelMaximum() {
+        assertEquals(LlamaServerManager.contextSizeFor(100000, 8192, 32768), 8192);
+        // ceiling that isn't a power of two is still honoured exactly
+        assertEquals(LlamaServerManager.contextSizeFor(100000, 131072, 12000), 12000);
+    }
+
+    @Test
+    public void testCeilingFollowsInstalledRam() {
+        assertEquals(LlamaServerManager.defaultMaxContext(8 * GB), 8192);
+        assertEquals(LlamaServerManager.defaultMaxContext(12 * GB), 16384);
+        assertEquals(LlamaServerManager.defaultMaxContext(16 * GB), 32768);
+    }
+
+    @Test
+    public void testUnknownRamIsTreatedAsSmallRunner() {
+        assertEquals(LlamaServerManager.defaultMaxContext(-1), 8192);
     }
 }
