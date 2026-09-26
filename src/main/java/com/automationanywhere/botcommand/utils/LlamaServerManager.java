@@ -110,26 +110,92 @@ public class LlamaServerManager {
     // available in pure Java) that leaves headroom for the OS and the bot
     // runner process itself; it is not guaranteed optimal on every CPU
     // topology, hence the override below for hardware where it isn't.
+    //
+    // Small machines are the exception: typical Bot Runners are 2-4 vCPU VMs,
+    // where "minus 2" left 1-2 threads and roughly halved throughput. The bot
+    // is blocked waiting on the inference call anyway, so on <= 4 logical
+    // cores every core goes to llama-server. Benchmarked on a 4 vCPU VM with a
+    // Qwen3-4B-shaped Q4_K_M model: 2 threads -> 4 threads took prompt
+    // processing from ~19 to ~37 tok/s and generation from ~3.3 to ~5.9 tok/s.
     private static final int SERVER_THREADS = resolveServerThreads();
 
     private static int resolveServerThreads() {
-        String fromEnv = System.getenv("LOCALAI_SERVER_THREADS");
-        if (fromEnv != null && !fromEnv.trim().isEmpty()) {
-            try {
-                return Math.max(1, Integer.parseInt(fromEnv.trim()));
-            } catch (NumberFormatException ignored) {
-                // fall through to system property / default
+        Integer override = parsePositiveInt(System.getenv("LOCALAI_SERVER_THREADS"));
+        if (override == null) override = parsePositiveInt(System.getProperty("localai.server.threads"));
+        return override != null ? override : defaultThreadCount(Runtime.getRuntime().availableProcessors());
+    }
+
+    static int defaultThreadCount(int logicalCores) {
+        if (logicalCores <= 4) return Math.max(1, logicalCores);
+        return logicalCores - 2;
+    }
+
+    // Context window (-c) is sized to the request, not the model's maximum.
+    // The KV cache is allocated (and zeroed) in full for -c at load time, so
+    // running every model at its advertised window (32K-128K) made the default
+    // qwen3-4b reserve ~7.1GB RSS and take ~33s to load on a 4 vCPU VM, even
+    // for a one-line classification. Measured peak RSS for qwen3-4b:
+    // 8K ~3.7GB, 16K ~4.8GB, 32K ~7.1GB.
+    //
+    // The server starts at the smallest power of two >= MIN_CONTEXT whose
+    // budget fits the first request, and restarts one size up only when a
+    // later request doesn't fit. It never shrinks, so a bot looping over
+    // mixed-length documents reloads at most a couple of times rather than
+    // on every call. Growth stops at a ceiling picked from physical RAM (see
+    // defaultMaxContext) so one long input can't push the runner into swap;
+    // past that, complete() fails fast with an actionable error. Override the
+    // ceiling with LOCALAI_CONTEXT_SIZE or -Dlocalai.context.size. It is
+    // always clamped to the model's own maximum.
+    static final int MIN_CONTEXT = 4096;
+    private static final int MAX_CONTEXT = resolveMaxContext();
+
+    private static int resolveMaxContext() {
+        Integer override = parsePositiveInt(System.getenv("LOCALAI_CONTEXT_SIZE"));
+        if (override == null) override = parsePositiveInt(System.getProperty("localai.context.size"));
+        return override != null ? override : defaultMaxContext(totalPhysicalMemoryBytes());
+    }
+
+    static int defaultMaxContext(long totalRamBytes) {
+        long gb = 1024L * 1024 * 1024;
+        if (totalRamBytes <= 0 || totalRamBytes < 10 * gb) return 8192;  // unknown or ~8GB runner
+        if (totalRamBytes < 15 * gb) return 16384;                       // ~12GB runner
+        return 32768;
+    }
+
+    /** Smallest power of two >= MIN_CONTEXT whose budget fits requiredTokens, clamped to the limits. */
+    static int contextSizeFor(int requiredTokens, int modelContextWindow, int maxContext) {
+        int limit = Math.min(modelContextWindow, maxContext);
+        int size = MIN_CONTEXT;
+        while (size < limit && contextBudget(size) < requiredTokens) size *= 2;
+        return Math.min(size, limit);
+    }
+
+    /** Tokens usable in a context of {@code ctx}: 10% margin for the ~4 chars/token estimate. */
+    static int contextBudget(int ctx) {
+        return (int) (ctx * 0.9);
+    }
+
+    @SuppressWarnings("deprecation") // getTotalPhysicalMemorySize: still present, and the only name on Java 11
+    private static long totalPhysicalMemoryBytes() {
+        try {
+            java.lang.management.OperatingSystemMXBean os = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            if (os instanceof com.sun.management.OperatingSystemMXBean) {
+                return ((com.sun.management.OperatingSystemMXBean) os).getTotalPhysicalMemorySize();
             }
+        } catch (Throwable t) {
+            logger.debug("Could not read physical memory size: {}", t.toString());
         }
-        String fromProp = System.getProperty("localai.server.threads");
-        if (fromProp != null && !fromProp.trim().isEmpty()) {
-            try {
-                return Math.max(1, Integer.parseInt(fromProp.trim()));
-            } catch (NumberFormatException ignored) {
-                // fall through to default
-            }
+        return -1;
+    }
+
+    private static Integer parsePositiveInt(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        try {
+            int v = Integer.parseInt(raw.trim());
+            return v > 0 ? v : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
-        return Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
     }
 
     private static volatile LlamaServerManager instance;
@@ -187,11 +253,28 @@ public class LlamaServerManager {
      *                     action field with a default that changes nothing
      *                     for everyone else.
      */
-    public synchronized void ensureModelLoaded(ModelManager.ModelType modelType, Integer portOverride) throws Exception {
+    public void ensureModelLoaded(ModelManager.ModelType modelType, Integer portOverride) throws Exception {
+        ensureModelLoaded(modelType, portOverride, 0);
+    }
+
+    /**
+     * As above, but also guarantees the context window can hold
+     * {@code requiredTokens} (estimated prompt + max output tokens), restarting
+     * one size up if the running server is too small — see MIN_CONTEXT.
+     */
+    public synchronized void ensureModelLoaded(ModelManager.ModelType modelType, Integer portOverride,
+                                               int requiredTokens) throws Exception {
+        int ctx = contextSizeFor(requiredTokens, modelType.getContextWindow(), MAX_CONTEXT);
+        boolean sameModel = isRunning() && modelType.getId().equals(currentModelId);
         boolean portMismatch = portOverride != null && portOverride > 0 && isRunning() && port != portOverride;
-        if (isRunning() && modelType.getId().equals(currentModelId) && !portMismatch) {
-            logger.debug("Reusing running server for model: {}", currentModelId);
+        if (sameModel && !portMismatch && currentContextWindow >= ctx) {
+            logger.debug("Reusing running server for model: {} (ctx {})", currentModelId, currentContextWindow);
             return;
+        }
+        if (sameModel) {
+            ctx = Math.max(ctx, currentContextWindow); // never shrink on a same-model restart
+            logger.info("Restarting llama-server for model {} with a larger context: {} -> {}",
+                currentModelId, currentContextWindow, ctx);
         }
 
         stopInternal();
@@ -209,13 +292,13 @@ public class LlamaServerManager {
         // startServer() may throw (e.g. model-load timeout). If it does,
         // waitForReady() internally calls stopInternal(), resetting port/apiKey/
         // serverProcess before re-throwing — leaving no stale state.
-        startServer(modelPath, modelType);
+        startServer(modelPath, modelType, ctx);
 
         // Mark the model as loaded only after the server is confirmed healthy.
         currentModelId = modelType.getId();
     }
 
-    private void startServer(Path modelPath, ModelManager.ModelType modelType) throws Exception {
+    private void startServer(Path modelPath, ModelManager.ModelType modelType, int ctx) throws Exception {
         Path serverBin = LlamaBinaryManager.getLlamaServerPath();
         String os = System.getProperty("os.name", "").toLowerCase();
         boolean isWindows = os.contains("windows");
@@ -223,13 +306,7 @@ public class LlamaServerManager {
         String absModelPath = modelPath.toAbsolutePath().toString();
         if (isWindows) absModelPath = absModelPath.replace('\\', '/');
 
-        // Use the model's actual advertised context window rather than a uniform
-        // cap. Models vary widely (8K-128K) and previously all were clamped to
-        // 8192, silently discarding the larger windows some models are chosen
-        // for. The tradeoff: KV-cache memory scales with -c, so a 128K-context
-        // model now reserves substantially more RAM at load time than before.
-        int ctx = modelType.getContextWindow();
-        this.currentContextWindow = ctx;
+        this.currentContextWindow = ctx; // sized by ensureModelLoaded — see MIN_CONTEXT
 
         // Generate a fresh random API key for this server instance.
         this.apiKey = UUID.randomUUID().toString();
@@ -243,6 +320,12 @@ public class LlamaServerManager {
             "-c",        String.valueOf(ctx),
             "-np",       "1",
             "-t",        String.valueOf(SERVER_THREADS),
+            // Disable llama-server's host-RAM prompt cache (default 8192 MiB).
+            // complete() sends cache_prompt=false, so it is never read, but the
+            // server still saves each distinct prompt's KV state into it:
+            // measured +~160MB RSS per distinct ~1200-token request, growing
+            // toward 8GB over a long-running bot — the whole RAM of a runner.
+            "--cache-ram", "0",
             "--api-key", this.apiKey   // reject requests that lack this key
         ));
 
@@ -373,22 +456,24 @@ public class LlamaServerManager {
         }
 
         // Fail fast, locally, with an actionable message instead of letting
-        // llama-server reject or truncate the request. Now that -c is set per
-        // model's real context window (not a uniform 8192 cap), a small-window
-        // model combined with a long prompt/maxTokens is a real possibility, and
-        // the server-side error for that is an opaque HTTP failure well after
-        // the model has already loaded. Token count is estimated (~4 chars per
-        // token is a standard rough approximation for English text with these
-        // tokenizers) — not exact, so a 10% safety margin is subtracted from
-        // the context budget before comparing.
+        // llama-server reject or truncate the request. ensureModelLoaded() grows
+        // the context to fit each request, so this only trips once a request
+        // needs more than MAX_CONTEXT (or the model's own maximum), where the
+        // server-side error would be an opaque HTTP failure. Token count is
+        // estimated (~4 chars per token is a standard rough approximation for
+        // English text with these tokenizers) — not exact, so contextBudget()
+        // keeps a 10% safety margin.
         int estimatedPromptTokens = estimateTokenCount(prompt);
-        int budget = (int) (localCtx * 0.9);
+        int budget = contextBudget(localCtx);
         if (estimatedPromptTokens + maxTokens > budget) {
             throw new RuntimeException(String.format(
                 "Prompt (~%d tokens, estimated) + max tokens (%d) exceeds the safe budget "
                 + "(%d of %d context tokens) for model '%s'. Reduce the prompt length or max "
-                + "tokens, or select a model with a larger context window.",
-                estimatedPromptTokens, maxTokens, budget, localCtx, localModelId));
+                + "tokens. If the model supports a larger window, you can raise this machine's "
+                + "context ceiling (currently %d) with the "
+                + "LOCALAI_CONTEXT_SIZE environment variable and restart the Bot Agent; larger "
+                + "values use more RAM.",
+                estimatedPromptTokens, maxTokens, budget, localCtx, localModelId, MAX_CONTEXT));
         }
 
         // cache_prompt was previously always true. Every call here is a fresh,
@@ -509,7 +594,7 @@ public class LlamaServerManager {
      * local pre-flight context-budget check in complete(). Not a real tokenizer
      * call — intentionally conservative via the 10% margin applied by the caller.
      */
-    private static int estimateTokenCount(String text) {
+    static int estimateTokenCount(String text) {
         if (text == null || text.isEmpty()) return 0;
         return (int) Math.ceil(text.length() / 4.0);
     }

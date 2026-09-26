@@ -14,6 +14,7 @@ public class LlamaInference {
     private static final Logger logger = LogManager.getLogger(LlamaInference.class);
 
     private final ModelManager.ModelType modelType;
+    private final Integer portOverride;
 
     private static final float TEMPERATURE = 0.1f;
     private static final int MAX_TOKENS = 100;
@@ -29,8 +30,17 @@ public class LlamaInference {
      */
     public LlamaInference(ModelManager.ModelType modelType, Integer portOverride) throws Exception {
         this.modelType = modelType;
-        LlamaServerManager.getInstance().ensureModelLoaded(modelType, portOverride);
-        logger.info("LlamaInference ready for model: {}", modelType.getId());
+        this.portOverride = portOverride;
+    }
+
+    /**
+     * Starts (or reuses) llama-server for this model with a context window big
+     * enough for this request. Deferred from the constructor so the window can
+     * be sized to the actual prompt — see LlamaServerManager.MIN_CONTEXT.
+     */
+    private void ensureLoaded(String prompt, int maxTokens) throws Exception {
+        LlamaServerManager.getInstance().ensureModelLoaded(
+            modelType, portOverride, LlamaServerManager.estimateTokenCount(prompt) + maxTokens);
     }
 
     /**
@@ -41,6 +51,7 @@ public class LlamaInference {
 
         String[] defaultStop = { "</s>", "<|im_end|>", "<end_of_turn>", "<|endoftext|>", "<turn|>" };
 
+        ensureLoaded(prompt, MAX_TOKENS);
         String result = LlamaServerManager.getInstance().complete(
             prompt, MAX_TOKENS, TEMPERATURE, defaultStop, timeoutSeconds);
 
@@ -79,9 +90,12 @@ public class LlamaInference {
             "<|endoftext|>", "<|im_end|>", "</s>", "<turn|>", "<|turn>"
         };
 
+        int effectiveMaxTokens = Math.min(maxTokens, modelType.getMaxOutputTokens());
+        ensureLoaded(formattedPrompt, effectiveMaxTokens);
+
         String result = LlamaServerManager.getInstance().complete(
             formattedPrompt,
-            Math.min(maxTokens, modelType.getMaxOutputTokens()),
+            effectiveMaxTokens,
             temperature,
             stopSequences,
             timeoutSeconds,
@@ -99,6 +113,10 @@ public class LlamaInference {
             "You are a JSON sanitizer. Remove or escape characters that would break JSON: " +
             "quotes, backslashes, newlines, tabs. Preserve meaning. Input: " + inputText +
             ". Output only the sanitized text.");
+
+        // Outside the try: a load failure (e.g. missing model file) must surface,
+        // not be masked by the rule-based fallback below.
+        ensureLoaded(prompt, MAX_TOKENS);
 
         try {
             String result = LlamaServerManager.getInstance().complete(
