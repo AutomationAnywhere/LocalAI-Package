@@ -110,26 +110,57 @@ public class LlamaServerManager {
     // available in pure Java) that leaves headroom for the OS and the bot
     // runner process itself; it is not guaranteed optimal on every CPU
     // topology, hence the override below for hardware where it isn't.
+    //
+    // Small machines are the exception: typical Bot Runners are 2-4 vCPU VMs,
+    // where "minus 2" left 1-2 threads and roughly halved throughput. The bot
+    // is blocked waiting on the inference call anyway, so on <= 4 logical
+    // cores every core goes to llama-server. Benchmarked on a 4 vCPU VM with a
+    // Qwen3-4B-shaped Q4_K_M model: 2 threads -> 4 threads took prompt
+    // processing from ~19 to ~37 tok/s and generation from ~3.3 to ~5.9 tok/s.
     private static final int SERVER_THREADS = resolveServerThreads();
 
     private static int resolveServerThreads() {
-        String fromEnv = System.getenv("LOCALAI_SERVER_THREADS");
-        if (fromEnv != null && !fromEnv.trim().isEmpty()) {
-            try {
-                return Math.max(1, Integer.parseInt(fromEnv.trim()));
-            } catch (NumberFormatException ignored) {
-                // fall through to system property / default
-            }
+        Integer override = parsePositiveInt(System.getenv("LOCALAI_SERVER_THREADS"));
+        if (override == null) override = parsePositiveInt(System.getProperty("localai.server.threads"));
+        return override != null ? override : defaultThreadCount(Runtime.getRuntime().availableProcessors());
+    }
+
+    static int defaultThreadCount(int logicalCores) {
+        if (logicalCores <= 4) return Math.max(1, logicalCores);
+        return logicalCores - 2;
+    }
+
+    // Context window (-c) the server is started with: the model's advertised
+    // window, capped. The KV cache is allocated (and zeroed) in full for -c at
+    // load time, so running every model at its maximum window (32K-128K) made
+    // the default qwen3-4b reserve ~7.1GB RSS and take ~33s to load on a 4 vCPU
+    // VM — enough to push an 8GB Bot Runner into swap. Capped at 8192 it uses
+    // ~3.6GB and loads in ~5s. 8192 tokens is roughly 25-30K characters of
+    // input, which covers a single bot step; longer inputs still get the
+    // actionable pre-flight error in complete(). Override with the
+    // LOCALAI_CONTEXT_SIZE env var or -Dlocalai.context.size (still clamped to
+    // the model's own maximum).
+    static final int DEFAULT_CONTEXT_CAP = 8192;
+    private static final Integer CONTEXT_SIZE_OVERRIDE = resolveContextSizeOverride();
+
+    private static Integer resolveContextSizeOverride() {
+        Integer fromEnv = parsePositiveInt(System.getenv("LOCALAI_CONTEXT_SIZE"));
+        return fromEnv != null ? fromEnv : parsePositiveInt(System.getProperty("localai.context.size"));
+    }
+
+    static int effectiveContextSize(int modelContextWindow, Integer override) {
+        int cap = override != null ? override : DEFAULT_CONTEXT_CAP;
+        return Math.min(modelContextWindow, cap);
+    }
+
+    private static Integer parsePositiveInt(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        try {
+            int v = Integer.parseInt(raw.trim());
+            return v > 0 ? v : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
-        String fromProp = System.getProperty("localai.server.threads");
-        if (fromProp != null && !fromProp.trim().isEmpty()) {
-            try {
-                return Math.max(1, Integer.parseInt(fromProp.trim()));
-            } catch (NumberFormatException ignored) {
-                // fall through to default
-            }
-        }
-        return Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
     }
 
     private static volatile LlamaServerManager instance;
@@ -223,12 +254,8 @@ public class LlamaServerManager {
         String absModelPath = modelPath.toAbsolutePath().toString();
         if (isWindows) absModelPath = absModelPath.replace('\\', '/');
 
-        // Use the model's actual advertised context window rather than a uniform
-        // cap. Models vary widely (8K-128K) and previously all were clamped to
-        // 8192, silently discarding the larger windows some models are chosen
-        // for. The tradeoff: KV-cache memory scales with -c, so a 128K-context
-        // model now reserves substantially more RAM at load time than before.
-        int ctx = modelType.getContextWindow();
+        // Model's advertised window, capped — see DEFAULT_CONTEXT_CAP.
+        int ctx = effectiveContextSize(modelType.getContextWindow(), CONTEXT_SIZE_OVERRIDE);
         this.currentContextWindow = ctx;
 
         // Generate a fresh random API key for this server instance.
@@ -373,9 +400,8 @@ public class LlamaServerManager {
         }
 
         // Fail fast, locally, with an actionable message instead of letting
-        // llama-server reject or truncate the request. Now that -c is set per
-        // model's real context window (not a uniform 8192 cap), a small-window
-        // model combined with a long prompt/maxTokens is a real possibility, and
+        // llama-server reject or truncate the request. With -c capped (see
+        // DEFAULT_CONTEXT_CAP), a long prompt/maxTokens is a real possibility, and
         // the server-side error for that is an opaque HTTP failure well after
         // the model has already loaded. Token count is estimated (~4 chars per
         // token is a standard rough approximation for English text with these
@@ -387,8 +413,10 @@ public class LlamaServerManager {
             throw new RuntimeException(String.format(
                 "Prompt (~%d tokens, estimated) + max tokens (%d) exceeds the safe budget "
                 + "(%d of %d context tokens) for model '%s'. Reduce the prompt length or max "
-                + "tokens, or select a model with a larger context window.",
-                estimatedPromptTokens, maxTokens, budget, localCtx, localModelId));
+                + "tokens, or raise the context size with the LOCALAI_CONTEXT_SIZE environment "
+                + "variable (default %d; larger values use more RAM and are clamped to the "
+                + "model's maximum) and restart the Bot Agent.",
+                estimatedPromptTokens, maxTokens, budget, localCtx, localModelId, DEFAULT_CONTEXT_CAP));
         }
 
         // cache_prompt was previously always true. Every call here is a fresh,
