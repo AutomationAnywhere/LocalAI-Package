@@ -44,6 +44,27 @@ public class LlamaInference {
     }
 
     /**
+     * complete() with one grow-and-retry. The context is sized from a cheap
+     * chars/4 estimate that undercounts number-heavy and non-English text; when
+     * the server reports the prompt didn't fit, its exact token count is used to
+     * grow the context (within the machine's ceiling) and the request is retried
+     * once. If it still doesn't fit, the overflow error — which says how to raise
+     * the ceiling — propagates.
+     */
+    private String complete(String prompt, int maxTokens, float temperature, String[] stops,
+                            int timeoutSeconds, String grammar) throws Exception {
+        LlamaServerManager server = LlamaServerManager.getInstance();
+        try {
+            return server.complete(prompt, maxTokens, temperature, stops, timeoutSeconds, grammar);
+        } catch (LlamaServerManager.ContextOverflowException e) {
+            logger.info("Input is {} tokens (estimate was lower); growing context beyond {} and retrying once",
+                e.promptTokens, e.ctx);
+            server.ensureModelLoaded(modelType, portOverride, e.promptTokens + maxTokens);
+            return server.complete(prompt, maxTokens, temperature, stops, timeoutSeconds, grammar);
+        }
+    }
+
+    /**
      * Generate text for a prompt with timeout support.
      */
     public String generate(String prompt, int timeoutSeconds) throws Exception {
@@ -52,8 +73,7 @@ public class LlamaInference {
         String[] defaultStop = { "</s>", "<|im_end|>", "<end_of_turn>", "<|endoftext|>", "<turn|>" };
 
         ensureLoaded(prompt, MAX_TOKENS);
-        String result = LlamaServerManager.getInstance().complete(
-            prompt, MAX_TOKENS, TEMPERATURE, defaultStop, timeoutSeconds);
+        String result = complete(prompt, MAX_TOKENS, TEMPERATURE, defaultStop, timeoutSeconds, null);
 
         logger.info("Generation complete ({} chars)", result.length());
         return result;
@@ -93,7 +113,7 @@ public class LlamaInference {
         int effectiveMaxTokens = Math.min(maxTokens, modelType.getMaxOutputTokens());
         ensureLoaded(formattedPrompt, effectiveMaxTokens);
 
-        String result = LlamaServerManager.getInstance().complete(
+        String result = complete(
             formattedPrompt,
             effectiveMaxTokens,
             temperature,
@@ -119,8 +139,8 @@ public class LlamaInference {
         ensureLoaded(prompt, MAX_TOKENS);
 
         try {
-            String result = LlamaServerManager.getInstance().complete(
-                prompt, MAX_TOKENS, TEMPERATURE, new String[]{"</s>", "<|im_end|>"}, timeoutSeconds);
+            String result = complete(
+                prompt, MAX_TOKENS, TEMPERATURE, new String[]{"</s>", "<|im_end|>"}, timeoutSeconds, null);
 
             String cleaned = result.trim();
             if (!cleaned.isEmpty() && cleaned.length() < inputText.length() * 3) {

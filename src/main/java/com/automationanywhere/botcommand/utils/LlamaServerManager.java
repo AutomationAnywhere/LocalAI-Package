@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -173,6 +174,58 @@ public class LlamaServerManager {
     /** Tokens usable in a context of {@code ctx}: 10% margin for the ~4 chars/token estimate. */
     static int contextBudget(int ctx) {
         return (int) (ctx * 0.9);
+    }
+
+    /**
+     * llama-server rejected the prompt because it doesn't fit the running
+     * context. The ~4 chars/token estimate used for sizing undercounts
+     * number-heavy and non-English text (an invoice-style input measured ~2.4
+     * chars/token: 9,301 real tokens vs ~5,500 estimated), so the server's exact
+     * count is used to grow the context and retry — see LlamaInference.
+     */
+    static class ContextOverflowException extends RuntimeException {
+        final int promptTokens;
+        final int ctx;
+
+        ContextOverflowException(int promptTokens, int ctx, int ceiling, String modelId) {
+            super(String.format(
+                "The input is %d tokens, which does not fit the %d-token context window for model '%s' "
+                + "(this machine's context ceiling is %d). Reduce the input length. If the model supports "
+                + "a larger window, you can raise the ceiling with the LOCALAI_CONTEXT_SIZE environment "
+                + "variable and restart the Bot Agent; larger values use more RAM.",
+                promptTokens, ctx, modelId, ceiling));
+            this.promptTokens = promptTokens;
+            this.ctx = ctx;
+        }
+    }
+
+    /**
+     * Parses llama-server's context-overflow error body, e.g.
+     * {"error":{"code":400,"type":"exceed_context_size_error","n_prompt_tokens":9301,"n_ctx":8192}}.
+     * Returns {promptTokens, ctx}, or null if the body is anything else.
+     */
+    static int[] parseContextOverflow(String body) {
+        try {
+            JsonObject err = JsonParser.parseString(body).getAsJsonObject().getAsJsonObject("error");
+            if (err == null || !"exceed_context_size_error".equals(err.get("type").getAsString())) return null;
+            return new int[] { err.get("n_prompt_tokens").getAsInt(), err.get("n_ctx").getAsInt() };
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Smallest reply worth generating; a prompt leaving less room than this is rejected. */
+    static final int MIN_OUTPUT_TOKENS = 256;
+
+    /**
+     * The output limit that fits next to the prompt in a context of {@code ctx}:
+     * the requested limit if it fits, otherwise whatever room is left. Returns
+     * -1 when the prompt leaves less than min(requested, MIN_OUTPUT_TOKENS) of room.
+     */
+    static int fitMaxTokens(int promptTokens, int requestedMaxTokens, int ctx) {
+        int available = contextBudget(ctx) - promptTokens;
+        if (available < Math.min(requestedMaxTokens, MIN_OUTPUT_TOKENS)) return -1;
+        return Math.min(requestedMaxTokens, available);
     }
 
     @SuppressWarnings("deprecation") // getTotalPhysicalMemorySize: still present, and the only name on Java 11
@@ -463,17 +516,30 @@ public class LlamaServerManager {
         // estimated (~4 chars per token is a standard rough approximation for
         // English text with these tokenizers) — not exact, so contextBudget()
         // keeps a 10% safety margin.
+        //
+        // maxTokens is an upper bound, not a requirement (the Prompt action asks
+        // for the model's full 8192-token output limit on every call). So when
+        // the prompt fits but prompt + maxTokens doesn't — always the case at a
+        // small-RAM runner's 8K ceiling — the output is clamped to the room that
+        // is left rather than rejecting a request that would run fine. Only a
+        // prompt that leaves no room for a useful reply is rejected.
         int estimatedPromptTokens = estimateTokenCount(prompt);
         int budget = contextBudget(localCtx);
-        if (estimatedPromptTokens + maxTokens > budget) {
+        int fittedMaxTokens = fitMaxTokens(estimatedPromptTokens, maxTokens, localCtx);
+        if (fittedMaxTokens < 0) {
             throw new RuntimeException(String.format(
-                "Prompt (~%d tokens, estimated) + max tokens (%d) exceeds the safe budget "
-                + "(%d of %d context tokens) for model '%s'. Reduce the prompt length or max "
-                + "tokens. If the model supports a larger window, you can raise this machine's "
-                + "context ceiling (currently %d) with the "
-                + "LOCALAI_CONTEXT_SIZE environment variable and restart the Bot Agent; larger "
-                + "values use more RAM.",
-                estimatedPromptTokens, maxTokens, budget, localCtx, localModelId, MAX_CONTEXT));
+                "Prompt (~%d tokens, estimated) leaves no room for a reply within the safe budget "
+                + "(%d of %d context tokens) for model '%s'. Reduce the prompt length. If the "
+                + "model supports a larger window, you can raise this machine's context ceiling "
+                + "(currently %d) with the LOCALAI_CONTEXT_SIZE environment variable and restart "
+                + "the Bot Agent; larger values use more RAM.",
+                estimatedPromptTokens, budget, localCtx, localModelId, MAX_CONTEXT));
+        }
+        if (fittedMaxTokens < maxTokens) {
+            logger.warn("Requested max output of {} tokens does not fit alongside a ~{}-token prompt "
+                + "in the {}-token context; limiting output to {} tokens",
+                maxTokens, estimatedPromptTokens, localCtx, fittedMaxTokens);
+            maxTokens = fittedMaxTokens;
         }
 
         // cache_prompt was previously always true. Every call here is a fresh,
@@ -532,6 +598,10 @@ public class LlamaServerManager {
             String bodyStr = responseBody != null ? responseBody.string() : "";
 
             if (!response.isSuccessful()) {
+                int[] overflow = response.code() == 400 ? parseContextOverflow(bodyStr) : null;
+                if (overflow != null) {
+                    throw new ContextOverflowException(overflow[0], overflow[1], MAX_CONTEXT, localModelId);
+                }
                 throw new RuntimeException(
                     "llama-server /completion HTTP " + response.code()
                     + ": " + (bodyStr.isEmpty() ? "(no body)" : bodyStr));

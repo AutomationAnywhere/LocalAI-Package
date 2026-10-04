@@ -79,4 +79,53 @@ public class TestLlamaServerManagerConfig {
     public void testUnknownRamIsTreatedAsSmallRunner() {
         assertEquals(LlamaServerManager.defaultMaxContext(-1), 8192);
     }
+
+    // ── Output clamping (the Prompt action always asks for the model's max output) ──
+
+    @Test
+    public void testFullOutputRequestIsClampedNotRejectedAtSmallCeiling() {
+        // Regression: Prompt asks for 8192 output tokens. At the 8K ceiling used on
+        // <10GB runners that must clamp to the room left, not reject a 40-token prompt.
+        int fitted = LlamaServerManager.fitMaxTokens(40, 8192, 8192);
+        assertEquals(fitted, LlamaServerManager.contextBudget(8192) - 40);
+        assertTrue(fitted > 7000);
+    }
+
+    @Test
+    public void testRequestThatFitsIsLeftAlone() {
+        assertEquals(LlamaServerManager.fitMaxTokens(500, 150, 4096), 150);
+        assertEquals(LlamaServerManager.fitMaxTokens(40, 8192, 32768), 8192);
+    }
+
+    @Test
+    public void testPromptWithNoRoomForAReplyIsRejected() {
+        // Budget at 8K is 7372; a 7300-token prompt leaves 72 < MIN_OUTPUT_TOKENS.
+        assertEquals(LlamaServerManager.fitMaxTokens(7300, 8192, 8192), -1);
+        assertEquals(LlamaServerManager.fitMaxTokens(9000, 150, 8192), -1);
+    }
+
+    // ── Context-overflow parsing (server's exact count corrects the chars/4 estimate) ──
+
+    @Test
+    public void testParsesRealServerOverflowBody() {
+        // Verbatim body llama-server b9481 returned for a number-heavy ~22K-char invoice.
+        String body = "{\"error\":{\"code\":400,\"message\":\"request (9301 tokens) exceeds the available "
+            + "context size (8192 tokens), try increasing it\",\"type\":\"exceed_context_size_error\","
+            + "\"n_prompt_tokens\":9301,\"n_ctx\":8192}}";
+        assertEquals(LlamaServerManager.parseContextOverflow(body), new int[] {9301, 8192});
+    }
+
+    @Test
+    public void testOtherServerErrorsAreNotTreatedAsOverflow() {
+        assertNull(LlamaServerManager.parseContextOverflow("{\"error\":{\"code\":401,\"type\":\"authentication_error\"}}"));
+        assertNull(LlamaServerManager.parseContextOverflow("not json"));
+        assertNull(LlamaServerManager.parseContextOverflow(""));
+    }
+
+    @Test
+    public void testSmallRequestedOutputOnlyNeedsThatMuchRoom() {
+        // A 100-token request (generate()/sanitize) needs 100 tokens of room, not 256.
+        assertEquals(LlamaServerManager.fitMaxTokens(7200, 100, 8192), 100);
+        assertEquals(LlamaServerManager.fitMaxTokens(7300, 100, 8192), -1); // only 72 left
+    }
 }
