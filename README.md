@@ -50,6 +50,14 @@ By default the inference server binds to `127.0.0.1` on a random free port — z
 - **Loopback doesn't route to the bot's own child process** (some VM/VDI network virtualization or VPN split-tunnel software): set the `LOCALAI_SERVER_HOST` environment variable to a working address (or `-Dlocalai.server.host=<ip>` as a JVM argument).
 - **Firewall/network policy only allows a specific, known port** (a random port every run can't be allowlisted): every inference action has a **Server Port (Advanced)** field — set it to your allowed port instead of editing environment variables per machine. Leave it at `0` for normal automatic behavior. A `LOCALAI_SERVER_PORT` environment variable (or `-Dlocalai.server.port=<port>`) is also available as a machine-wide fallback if you'd rather not set it per action, but the action field takes precedence when both are set.
 
+### Memory and CPU tuning
+
+Defaults are sized for typical Bot Runners (2-4 vCPU VMs with 8-12GB RAM):
+
+- **Context size is sized to each request.** The inference server starts with the smallest context (4K, 8K, 16K...) that fits the prompt plus output, and restarts one size larger only when a later prompt doesn't fit. It never shrinks back, so a bot looping over mixed-length documents reloads at most a couple of times. This matters because llama.cpp reserves the full context in RAM up front: running `qwen3-4b` at its full 32K window used ~7.1GB and took ~33s to load on a 4 vCPU VM, versus ~3.7GB and ~5s at 8K.
+- **Growth is capped by installed RAM**: 8K tokens under 10GB, 16K under 15GB, 32K above that (always clamped to the model's own maximum). A prompt that needs more fails fast with an error explaining how to proceed. Raise the ceiling with the `LOCALAI_CONTEXT_SIZE` environment variable (or `-Dlocalai.context.size=<tokens>`) and restart the Bot Agent; larger values use more RAM.
+- **CPU threads** default to every core on machines with 4 or fewer logical cores, and logical cores minus 2 above that. Override with `LOCALAI_SERVER_THREADS` (or `-Dlocalai.server.threads=<n>`).
+
 ## Actions
 
 ### Validate Device

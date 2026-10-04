@@ -14,6 +14,7 @@ public class LlamaInference {
     private static final Logger logger = LogManager.getLogger(LlamaInference.class);
 
     private final ModelManager.ModelType modelType;
+    private final Integer portOverride;
 
     private static final float TEMPERATURE = 0.1f;
     private static final int MAX_TOKENS = 100;
@@ -29,8 +30,38 @@ public class LlamaInference {
      */
     public LlamaInference(ModelManager.ModelType modelType, Integer portOverride) throws Exception {
         this.modelType = modelType;
-        LlamaServerManager.getInstance().ensureModelLoaded(modelType, portOverride);
-        logger.info("LlamaInference ready for model: {}", modelType.getId());
+        this.portOverride = portOverride;
+    }
+
+    /**
+     * Starts (or reuses) llama-server for this model with a context window big
+     * enough for this request. Deferred from the constructor so the window can
+     * be sized to the actual prompt — see LlamaServerManager.MIN_CONTEXT.
+     */
+    private void ensureLoaded(String prompt, int maxTokens) throws Exception {
+        LlamaServerManager.getInstance().ensureModelLoaded(
+            modelType, portOverride, LlamaServerManager.estimateTokenCount(prompt) + maxTokens);
+    }
+
+    /**
+     * complete() with one grow-and-retry. The context is sized from a cheap
+     * chars/4 estimate that undercounts number-heavy and non-English text; when
+     * the server reports the prompt didn't fit, its exact token count is used to
+     * grow the context (within the machine's ceiling) and the request is retried
+     * once. If it still doesn't fit, the overflow error — which says how to raise
+     * the ceiling — propagates.
+     */
+    private String complete(String prompt, int maxTokens, float temperature, String[] stops,
+                            int timeoutSeconds, String grammar) throws Exception {
+        LlamaServerManager server = LlamaServerManager.getInstance();
+        try {
+            return server.complete(prompt, maxTokens, temperature, stops, timeoutSeconds, grammar);
+        } catch (LlamaServerManager.ContextOverflowException e) {
+            logger.info("Input is {} tokens (estimate was lower); growing context beyond {} and retrying once",
+                e.promptTokens, e.ctx);
+            server.ensureModelLoaded(modelType, portOverride, e.promptTokens + maxTokens);
+            return server.complete(prompt, maxTokens, temperature, stops, timeoutSeconds, grammar);
+        }
     }
 
     /**
@@ -41,8 +72,8 @@ public class LlamaInference {
 
         String[] defaultStop = { "</s>", "<|im_end|>", "<end_of_turn>", "<|endoftext|>", "<turn|>" };
 
-        String result = LlamaServerManager.getInstance().complete(
-            prompt, MAX_TOKENS, TEMPERATURE, defaultStop, timeoutSeconds);
+        ensureLoaded(prompt, MAX_TOKENS);
+        String result = complete(prompt, MAX_TOKENS, TEMPERATURE, defaultStop, timeoutSeconds, null);
 
         logger.info("Generation complete ({} chars)", result.length());
         return result;
@@ -79,9 +110,12 @@ public class LlamaInference {
             "<|endoftext|>", "<|im_end|>", "</s>", "<turn|>", "<|turn>"
         };
 
-        String result = LlamaServerManager.getInstance().complete(
+        int effectiveMaxTokens = Math.min(maxTokens, modelType.getMaxOutputTokens());
+        ensureLoaded(formattedPrompt, effectiveMaxTokens);
+
+        String result = complete(
             formattedPrompt,
-            Math.min(maxTokens, modelType.getMaxOutputTokens()),
+            effectiveMaxTokens,
             temperature,
             stopSequences,
             timeoutSeconds,
@@ -100,9 +134,13 @@ public class LlamaInference {
             "quotes, backslashes, newlines, tabs. Preserve meaning. Input: " + inputText +
             ". Output only the sanitized text.");
 
+        // Outside the try: a load failure (e.g. missing model file) must surface,
+        // not be masked by the rule-based fallback below.
+        ensureLoaded(prompt, MAX_TOKENS);
+
         try {
-            String result = LlamaServerManager.getInstance().complete(
-                prompt, MAX_TOKENS, TEMPERATURE, new String[]{"</s>", "<|im_end|>"}, timeoutSeconds);
+            String result = complete(
+                prompt, MAX_TOKENS, TEMPERATURE, new String[]{"</s>", "<|im_end|>"}, timeoutSeconds, null);
 
             String cleaned = result.trim();
             if (!cleaned.isEmpty() && cleaned.length() < inputText.length() * 3) {
