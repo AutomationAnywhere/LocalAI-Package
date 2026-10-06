@@ -62,6 +62,89 @@ public class LlamaServerManager {
         return System.getProperty("localai.server.host", "127.0.0.1");
     }
 
+    // ── Temporary diagnostics ────────────────────────────────────────────────
+    // LOCALAI_DEBUG=1 (or -Dlocalai.debug=true) writes extra detail to
+    // llama-server-debug.log next to llama-server.log: environment/proxy snapshot,
+    // the server command line (key masked), every distinct health-check outcome
+    // (status, Via/Server headers, body start) and a netstat/tasklist snapshot when
+    // the health check times out. Off by default; the debug file is appended to (so
+    // failed attempts survive) and trimmed past DEBUG_LOG_MAX_BYTES.
+    private static final boolean DEBUG = resolveDebug();
+    private static final long DEBUG_LOG_MAX_BYTES = 5L * 1024 * 1024;
+
+    private static boolean resolveDebug() {
+        String v = System.getenv("LOCALAI_DEBUG");
+        if (v == null || v.trim().isEmpty()) v = System.getProperty("localai.debug");
+        if (v == null) return false;
+        v = v.trim().toLowerCase();
+        return v.equals("1") || v.equals("true") || v.equals("yes");
+    }
+
+    private static Path debugLogPath() {
+        return ModelManager.getModelCacheDir().resolve("llama-server-debug.log");
+    }
+
+    private static synchronized void debugLog(String message) {
+        if (!DEBUG) return;
+        try {
+            Path f = debugLogPath();
+            Files.createDirectories(f.getParent());
+            if (Files.exists(f) && Files.size(f) > DEBUG_LOG_MAX_BYTES) Files.delete(f);
+            Files.write(f, (java.time.OffsetDateTime.now() + " " + message + System.lineSeparator())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (Exception ignored) {
+            // diagnostics must never break a bot run
+        }
+    }
+
+    private static String describeEnvironment() {
+        StringBuilder sb = new StringBuilder("environment: ");
+        sb.append("java=").append(System.getProperty("java.version"))
+          .append(", os=").append(System.getProperty("os.name")).append(' ').append(System.getProperty("os.version"))
+          .append(", user=").append(System.getProperty("user.name"))
+          .append(", host=").append(SERVER_HOST)
+          .append(", LOCALAI_SERVER_HOST=").append(System.getenv("LOCALAI_SERVER_HOST"))
+          .append(", LOCALAI_SERVER_PORT=").append(System.getenv("LOCALAI_SERVER_PORT"));
+        for (String k : new String[] {"http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort",
+                                      "http.nonProxyHosts", "java.net.useSystemProxies", "localai.server.host", "localai.server.port"}) {
+            sb.append(", ").append(k).append('=').append(System.getProperty(k));
+        }
+        for (String k : new String[] {"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"}) {
+            sb.append(", ").append(k).append('=').append(System.getenv(k));
+        }
+        sb.append(" (the package's own HTTP client ignores proxies for the local server)");
+        return sb.toString();
+    }
+
+    /** Runs a short diagnostic command and returns its (truncated) output, or why it failed. */
+    private static String runDiagnostic(String... cmd) {
+        try {
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            if (!p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                return "(timed out)";
+            }
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return out.length() > 4000 ? out.substring(0, 4000) + "..." : out;
+        } catch (Exception e) {
+            return "(failed: " + e + ")";
+        }
+    }
+
+    private static void debugSnapshotOnTimeout(int servicePort) {
+        if (!DEBUG) return;
+        boolean win = System.getProperty("os.name", "").toLowerCase().contains("windows");
+        if (win) {
+            debugLog("snapshot netstat (all):\n" + runDiagnostic("cmd", "/c", "netstat -ano | findstr :" + servicePort));
+            debugLog("snapshot tasklist:\n" + runDiagnostic("cmd", "/c", "tasklist /fi \"imagename eq llama-server.exe\""));
+            debugLog("snapshot winhttp proxy:\n" + runDiagnostic("cmd", "/c", "netsh winhttp show proxy"));
+        } else {
+            debugLog("snapshot lsof:\n" + runDiagnostic("sh", "-c", "lsof -nP -i :" + servicePort));
+            debugLog("snapshot ps:\n" + runDiagnostic("sh", "-c", "ps -eo pid,rss,command | grep '[l]lama-server'"));
+        }
+    }
+
     // By default llama-server binds a fresh OS-assigned ephemeral port every run
     // (ServerSocket(0) — see findFreePort()). That's the right default: zero
     // configuration, no port ever collides. But some locked-down VM/VDI images
@@ -263,7 +346,11 @@ public class LlamaServerManager {
 
     // Generous base timeouts for health-check polling during model load.
     // Per-call inference timeouts are applied in complete() via newBuilder().
+    // The server is a child process of this one, so never route calls to it through a
+    // JVM/system proxy: a proxy that doesn't exclude the server's address answers the
+    // health check with its own errors (or refuses) even though the server is healthy.
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
+        .proxy(java.net.Proxy.NO_PROXY)
         .connectTimeout(Duration.ofSeconds(10))
         .readTimeout(Duration.ofMinutes(5))
         .callTimeout(Duration.ofMinutes(5))
@@ -393,8 +480,19 @@ public class LlamaServerManager {
         // ProcessBuilder.Redirect.to() truncates the log on each new server start,
         // keeping the file bounded to the output of a single session.
         Path logFile = ModelManager.getModelCacheDir().resolve("llama-server.log");
-        pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()));
-        pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()));
+        if (DEBUG) {
+            // keep earlier attempts' output when debugging (bounded)
+            if (Files.exists(logFile) && Files.size(logFile) > DEBUG_LOG_MAX_BYTES) Files.delete(logFile);
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
+            pb.redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
+            debugLog("==== starting llama-server: model=" + modelType.getId() + ", port=" + port + ", ctx=" + ctx
+                + ", model file=" + modelPath + " (" + Files.size(modelPath) + " bytes)");
+            debugLog(describeEnvironment());
+            debugLog("command: " + String.join(" ", cmd).replace(this.apiKey, "***"));
+        } else {
+            pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()));
+            pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()));
+        }
 
         serverProcess = pb.start();
         logger.info("llama-server started (PID {}). Log: {}", serverProcess.pid(), logFile);
@@ -413,6 +511,10 @@ public class LlamaServerManager {
         // out) instead of just "did not become ready" — this was previously
         // indistinguishable from a genuine slow model load.
         IOException lastConnectFailure = null;
+        int lastStatus = -1;
+        String lastDebugKey = null;
+        int polls = 0;
+        final int servicePort = port; // stopInternal() resets port; keep it for the error text
         while (System.currentTimeMillis() < deadline) {
             // Snapshot the volatile field once per iteration to avoid a race
             // between two reads of the same field within one loop body.
@@ -432,6 +534,20 @@ public class LlamaServerManager {
                     .get()
                     .build();
                 try (Response resp = httpClient.newCall(req).execute()) {
+                    lastStatus = resp.code();
+                    if (DEBUG) {
+                        String key = "HTTP " + resp.code();
+                        if (!key.equals(lastDebugKey) || polls % 40 == 0) {
+                            String bodyStart = "";
+                            try {
+                                bodyStart = resp.peekBody(200).string().replaceAll("\\s+", " ");
+                            } catch (Exception ignored) { }
+                            debugLog("health poll #" + polls + ": " + key + " via=" + resp.header("Via")
+                                + " server=" + resp.header("Server") + " proxy-hdr=" + resp.header("Proxy-Authenticate")
+                                + " content-type=" + resp.header("Content-Type") + " body=\"" + bodyStart + "\"");
+                            lastDebugKey = key;
+                        }
+                    }
                     if (resp.code() == 200) {
                         logger.info("llama-server ready on {}:{}", SERVER_HOST, port);
                         return;
@@ -441,25 +557,37 @@ public class LlamaServerManager {
                 // Not accepting connections yet — keep polling, but remember why
                 // in case we never succeed and need to report it below.
                 lastConnectFailure = e;
+                if (DEBUG) {
+                    String key = e.getClass().getName() + ": " + e.getMessage();
+                    if (!key.equals(lastDebugKey) || polls % 40 == 0) {
+                        debugLog("health poll #" + polls + ": connection failure " + key);
+                        lastDebugKey = key;
+                    }
+                }
             }
+            polls++;
 
             Thread.sleep(500);
         }
 
         Path log = ModelManager.getModelCacheDir().resolve("llama-server.log");
         String tail = readLogTail(log, 20);
+        debugLog("health check timed out after " + (timeoutMs / 1000) + "s; last status=" + lastStatus
+            + ", last failure=" + lastConnectFailure);
+        debugSnapshotOnTimeout(servicePort);
         stopInternal();
         throw new RuntimeException(
             "llama-server did not become ready within " + (timeoutMs / 1000) + "s "
             + "(process was alive, health check against " + healthUrl + " never returned 200). "
-            + "Last connection error: " + (lastConnectFailure != null ? lastConnectFailure.toString() : "none — got non-200 responses only") + ". "
-            + "If this environment's network setup means " + SERVER_HOST + ":" + port + " does not route to "
+            + "Last connection error: " + (lastConnectFailure != null ? lastConnectFailure.toString() : "none — got HTTP " + lastStatus + " responses only (a proxy, VPN or security agent may be answering instead of llama-server)") + ". "
+            + "If this environment's network setup means " + SERVER_HOST + ":" + servicePort + " does not route to "
             + "the bot's own child processes (e.g. some VM/VDI network virtualization, VPN split-tunnel "
-            + "software, or a firewall/endpoint policy that blocks a random ephemeral port like " + port + "), "
+            + "software, or a firewall/endpoint policy that blocks a random ephemeral port like " + servicePort + "), "
             + "set the LOCALAI_SERVER_HOST environment variable to a working address and/or "
             + "LOCALAI_SERVER_PORT to a fixed port your network policy allows, then restart the Bot Agent "
             + "(or -Dlocalai.server.host / -Dlocalai.server.port as JVM arguments if you cannot set env vars). "
-            + "Last server log lines:\n" + tail);
+            + "Last server log lines:\n" + tail
+            + (DEBUG ? "\nDebug details: " + debugLogPath() : "\nTo capture more detail, set LOCALAI_DEBUG=1 and retry."));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
